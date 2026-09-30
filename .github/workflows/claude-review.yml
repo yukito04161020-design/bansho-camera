@@ -20,6 +20,7 @@ jobs:
   auto-review:
     if: |
       github.event_name == 'pull_request' &&
+      github.actor != 'github-actions[bot]' &&
       github.event.pull_request.draft == false &&
       github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
