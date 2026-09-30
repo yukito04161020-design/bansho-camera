@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    <meta name="theme-color" content="#164e46">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <title>Googleログインの検証 | 板書カメラ</title>
+    <link rel="manifest" href="./manifest.webmanifest">
+    <link rel="apple-touch-icon" href="./icons/apple-touch-icon.png">
+    <link rel="stylesheet" href="./styles.css">
+    <link rel="stylesheet" href="./login-test.css">
+    <script type="module" src="./login-preview.js"></script>
+  </head>
+  <body>
+    <main>
+      <h1>Googleログインの検証（Issue #6）</h1>
+      <p>ホーム画面からのログインと、期限後の取り直しを確かめます。</p>
+      <p id="launch-mode"></p>
+      <p>権限は、このアプリで作ったファイルを扱う範囲（drive.file）だけです。</p>
+      <p>ログインが成功すると、ドライブに検証用のテキストを1つ作成します。</p>
+      <div class="buttons">
+        <button id="login" type="button" disabled>Googleでログインして検証する</button>
+        <button id="renew" type="button" disabled>トークンの取り直しを試す</button>
+        <button id="create-text" type="button" disabled>テキストをもう1つ作成する</button>
+        <button id="cancel-login" type="button" hidden>ログイン待ちを中断する</button>
+      </div>
+      <p id="status" role="status">Googleのログイン機能を読み込んでいます。</p>
+      <dl>
+        <dt>トークンの状態</dt><dd id="token-state">未取得</dd>
+        <dt>取得時刻（日本時間）</dt><dd id="received-at">未取得</dd>
+        <dt>有効期限（日本時間）</dt><dd id="expires-at">未取得</dd>
+        <dt>期限まで</dt><dd id="remaining">未取得</dd>
+      </dl>
+      <p id="file-status" role="status">テキスト：まだ作成していません。</p>
+      <p><a id="file-link" hidden target="_blank" rel="noopener noreferrer">作成したテキストをドライブで確認</a></p>
+      <p class="note">約1時間後、期限切れの表示を確認して「トークンの取り直しを試す」を押してください。
+        その後「テキストをもう1つ作成する」で、再取得したトークンが使えるか確認できます。</p>
+      <p class="note">画面を閉じるとトークンは失われます。開き直した後にGoogleのどの操作が必要かも記録してください。
+        トークンの値は表示・保存しません。</p>
+      <p><a href="./">ホームに戻る</a></p>
+    </main>
+    <noscript>ログインの検証にはJavaScriptを有効にしてください。</noscript>
+  </body>
+</html>
