@@ -4,7 +4,6 @@
 
 - 設計書：[docs/design.md](docs/design.md)
 - AIエージェント向けの約束事：[AGENTS.md](AGENTS.md)
-- 送信待ちと再送のロジック：[docs/upload-queue.md](docs/upload-queue.md)
 
 ## 開発の土台（Issue #2）
 
@@ -91,3 +90,9 @@ Google Identity Servicesでdrive.fileだけを許可し、ログイン後に検�
 トークンはメモリ内だけに保持し、画面を閉じると破棄します。
 この検証ページではGoogleの公式スクリプトを通信で読み込みます。
 手順と結果テンプレートは[Googleログイン検証](docs/google-login-test.md)にあります。
+
+## 送信待ちと再送のロジック（Issue #15）
+
+画像と保存先をIndexedDBへ残し、前面・オンラインのときに1件ずつ送る準備用ロジックです。
+失敗時の再送、認証待ち、件数と状態の購読を提供します。
+接続方法とテストの説明は[送信待ちと再送](docs/upload-queue.md)にあります。
