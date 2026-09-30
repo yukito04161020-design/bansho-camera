@@ -4,6 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
     <meta name="theme-color" content="#164e46">
+    <meta name="app-version" content="development">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="default">
     <meta name="apple-mobile-web-app-title" content="板書カメラ">
@@ -12,6 +13,7 @@
     <link rel="apple-touch-icon" sizes="180x180" href="./icons/apple-touch-icon.png">
     <link rel="icon" type="image/png" sizes="192x192" href="./icons/icon-192.png">
     <link rel="stylesheet" href="./styles.css">
+    <script type="module" src="./home.js"></script>
   </head>
   <body>
     <main>
@@ -19,6 +21,8 @@
       <p>板書が読める解像度を確かめるための試作です。</p>
       <p><a href="./camera-test.html">カメラの解像度を検証する</a></p>
       <p class="install-hint">Safariの共有メニューから「ホーム画面に追加」して使えます。</p>
+      <p class="version">版：<span data-app-version>開発版</span></p>
+      <p class="version" data-update-status role="status"></p>
     </main>
   </body>
 </html>

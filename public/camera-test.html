@@ -4,6 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
     <meta name="theme-color" content="#164e46">
+    <meta name="app-version" content="development">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="default">
     <title>解像度の検証 | 板書カメラ</title>
@@ -20,6 +21,8 @@
           <h1>解像度の検証（Issue #3）</h1>
           <p id="resolution">映像：未取得</p>
           <p id="request">要求：背面カメラ・高解像度</p>
+          <p class="version">版：<span data-app-version>開発版</span></p>
+          <p class="version" data-update-status role="status"></p>
         </header>
         <div class="overlay bottom">
           <p id="status" role="status">「カメラを開始」を押し、カメラの使用を許可してください。</p>
@@ -37,6 +40,8 @@
         <header class="review-header">
           <h1>撮影画像の確認</h1>
           <p id="image-resolution"></p>
+          <p class="version">版：<span data-app-version>開発版</span></p>
+          <p class="version" data-update-status role="status"></p>
           <div class="buttons">
             <button id="actual-size" type="button" aria-pressed="false">等倍で確認</button>
             <button id="back" type="button">カメラに戻る</button>

@@ -1,4 +1,5 @@
 import { captureFrame, openRearCamera } from "./camera-logic.js";
+import { initializeUpdates } from "./app-update.js";
 
 const video = document.querySelector("#camera");
 const canvas = document.querySelector("#image");
@@ -80,7 +81,7 @@ function cameraError(error) {
 }
 
 async function startCamera() {
-  if (starting || stream) return;
+  if (starting || stream || updates.isNavigating()) return;
   if (!window.isSecureContext || !navigator.mediaDevices?.getUserMedia) {
     status.textContent = "カメラを使うには、HTTPSの公開URLをiPhoneのSafariで開いてください。";
     return;
@@ -177,3 +178,8 @@ document.addEventListener("visibilitychange", () => {
   }
 });
 window.addEventListener("pagehide", stopCamera);
+
+const updates = initializeUpdates(() => ({
+  cameraActive: starting || Boolean(stream),
+  imagePreview: !imageScreen.hidden,
+}));
