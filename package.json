@@ -9,5 +9,8 @@
   "scripts": {
     "test": "node --test",
     "build": "node scripts/build-site.js"
+  },
+  "devDependencies": {
+    "fake-indexeddb": "6.2.5"
   }
 }

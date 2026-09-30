@@ -4,6 +4,7 @@
 
 - 設計書：[docs/design.md](docs/design.md)
 - AIエージェント向けの約束事：[AGENTS.md](AGENTS.md)
+- 送信待ちと再送のロジック：[docs/upload-queue.md](docs/upload-queue.md)
 
 ## 開発の土台（Issue #2）
 
@@ -22,7 +23,7 @@ npm test
 ```
 
 テストはNode.js標準の`node:test`と`node:assert/strict`で実行します。
-外部ライブラリのインストールは不要です。
+IndexedDBのテスト専用に`fake-indexeddb`を`npm ci`で導入します（公開物には含めません）。
 `examples/add.js`と`tests/add.test.js`が、画面に依存しない関数とテストの最小例です。
 後続のロジックのテストも`tests/`に`*.test.js`として追加できます。
 

@@ -7,6 +7,10 @@ export function registerPendingUploadCounter(counter) {
   pendingUploadCounter = counter;
 }
 
+export function readPendingUploadCount() {
+  return pendingUploadCounter();
+}
+
 export function initializeUpdates(getActivity = () => ({ cameraActive: false, imagePreview: false })) {
   const currentVersion = document.querySelector('meta[name="app-version"]')?.content || "development";
   const notices = document.querySelectorAll("[data-update-status]");
@@ -23,7 +27,7 @@ export function initializeUpdates(getActivity = () => ({ cameraActive: false, im
       if (version !== "development" && !/^[a-f0-9]{40}$/.test(version)) throw new Error("版情報が不正です。");
       return version;
     },
-    readPendingUploads: () => pendingUploadCounter(),
+    readPendingUploads: readPendingUploadCount,
     getActivity: () => ({ ...getActivity(), pageVisible: !document.hidden }),
     applyUpdate: (version) => {
       const url = new URL(location.href);

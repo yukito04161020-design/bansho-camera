@@ -29,9 +29,10 @@ Service Workerや独自のオフライン用キャッシュは追加していま
 
 ## 将来の送信待ち機能との接続
 
-送信待ちの保存・再送は後続のIssueで実装します。現在は0件を返すだけです。
-実装時は、`public/app-update.js`の`registerPendingUploadCounter`に、
-IndexedDBから件数を読む関数を登録してから`initializeUpdates`を呼んでください。
+Issue #15の[送信待ちと再送](upload-queue.md)は、`createUploadQueue`を呼んだ直後に
+`registerPendingUploadCounter`へIndexedDBの件数取得を登録します。
+本実装では更新機能より先に呼んでください。既存の検証ページはまだ送信機能を使わず、
+登録前の件数は0です。`readPendingUploadCount`は登録された取得関数を呼びます。
 
 ```js
 registerPendingUploadCounter(async () => {
