@@ -4,6 +4,6 @@
 export const config = Object.freeze({
   googleClientId: "787282760100-k8h7vvjcg765prd70q5cnalp7mhpdp1l.apps.googleusercontent.com",
   // Googleドライブへの保存で要求する権限
-  driveScopes: ["https://www.googleapis.com/auth/drive"],
+  driveScopes: ["https://www.googleapis.com/auth/drive.file"],
 });
 // 練習用：自動レビューの修正の流れを確かめるための変更
