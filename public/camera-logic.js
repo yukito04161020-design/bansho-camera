@@ -1,5 +1,5 @@
 // 解像度は必須値にせずidealで要求し、低解像度の端末でも検証できるようにします。
-export function resolutionConstraints(capabilities = {}) {
+export function resolutionConstraints(capabilities = {}, deviceId = "") {
   const maximum = (range, fallback) => Number.isFinite(range?.max) && range.max > 0
     ? range.max : fallback;
   return {
@@ -7,13 +7,14 @@ export function resolutionConstraints(capabilities = {}) {
     width: { ideal: maximum(capabilities.width, 7680) },
     height: { ideal: maximum(capabilities.height, 4320) },
     resizeMode: { ideal: "none" },
+    ...(deviceId ? { deviceId: { exact: deviceId } } : {}),
   };
 }
 
-export async function openRearCamera(mediaDevices) {
+export async function openRearCamera(mediaDevices, { deviceId = "" } = {}) {
   const stream = await mediaDevices.getUserMedia({
     audio: false,
-    video: resolutionConstraints(),
+    video: resolutionConstraints({}, deviceId),
   });
   const track = stream.getVideoTracks()[0];
   try {
@@ -23,16 +24,16 @@ export async function openRearCamera(mediaDevices) {
     if (facingMode && facingMode !== "environment") {
       throw new Error("背面カメラを取得できませんでした。");
     }
-    let requested = resolutionConstraints();
+    let requested = resolutionConstraints({}, deviceId);
     let adjusted = false;
     if (typeof track.getCapabilities === "function" && typeof track.applyConstraints === "function") {
       try {
-        requested = resolutionConstraints(track.getCapabilities());
+        requested = resolutionConstraints(track.getCapabilities(), deviceId);
         await track.applyConstraints(requested);
         adjusted = true;
       } catch {
         // 能力値の取得・再要求が使えなくても、最初に取得した映像で検証を続けます。
-        requested = resolutionConstraints();
+        requested = resolutionConstraints({}, deviceId);
       }
     }
     return { stream, requested, adjusted };
