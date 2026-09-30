@@ -18,9 +18,22 @@
       <section id="camera-screen" class="screen" aria-label="カメラの解像度検証">
         <video id="camera" autoplay muted playsinline aria-label="背面カメラの映像"></video>
         <header class="overlay top">
-          <h1>解像度の検証（Issue #3）</h1>
+          <h1>レンズ・ズームの検証（Issue #9）</h1>
           <p id="resolution">映像：未取得</p>
           <p id="request">要求：背面カメラ・高解像度</p>
+          <p id="camera-name">カメラ：未取得</p>
+          <details id="camera-options">
+            <summary>カメラ・ズームを選ぶ</summary>
+            <label for="camera-select">カメラ（背面を選択）</label>
+            <select id="camera-select" disabled>
+              <option value="">自動選択（背面）</option>
+            </select>
+            <p id="devices-status">カメラを開始すると、許可後の一覧を取得します。</p>
+            <label for="zoom">ズーム</label>
+            <input id="zoom" type="range" min="1" max="1" step="1" value="1" disabled>
+          </details>
+          <p id="zoom-status">倍率：カメラ開始後に確認します。</p>
+          <p id="preference-status" role="status"></p>
           <p class="version">版：<span data-app-version>開発版</span></p>
           <p class="version" data-update-status role="status"></p>
         </header>
@@ -40,6 +53,7 @@
         <header class="review-header">
           <h1>撮影画像の確認</h1>
           <p id="image-resolution"></p>
+          <p id="image-camera"></p>
           <p class="version">版：<span data-app-version>開発版</span></p>
           <p class="version" data-update-status role="status"></p>
           <div class="buttons">

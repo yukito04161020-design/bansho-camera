@@ -21,7 +21,7 @@ test("公開物に同じコミットの版情報とキャッシュ回避用URL�
         assert.ok(asset[1].endsWith(`?v=${revision}`), asset[1]);
       }
     }
-    for (const file of ["home.js", "app-update.js", "camera-preview.js"]) {
+    for (const file of ["home.js", "app-update.js", "camera-preview.js", "camera-options.js"]) {
       const script = await readFile(join(outputDirectory, file), "utf8");
       for (const dependency of script.matchAll(/from ["']([^"']+)["']/g)) {
         assert.ok(dependency[1].endsWith(`?v=${revision}`), dependency[1]);
