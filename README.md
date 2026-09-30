@@ -4,6 +4,7 @@
 
 - 設計書：[docs/design.md](docs/design.md)
 - AIエージェント向けの約束事：[AGENTS.md](AGENTS.md)
+- フォルダ名と回数のロジック：[docs/folder-names.md](docs/folder-names.md)
 
 ## 開発の土台（Issue #2）
 
