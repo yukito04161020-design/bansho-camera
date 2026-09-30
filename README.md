@@ -22,7 +22,7 @@ npm test
 ```
 
 テストはNode.js標準の`node:test`と`node:assert/strict`で実行します。
-外部ライブラリのインストールは不要です。
+IndexedDBのテスト専用に`fake-indexeddb`を`npm ci`で導入します（公開物には含めません）。
 `examples/add.js`と`tests/add.test.js`が、画面に依存しない関数とテストの最小例です。
 後続のロジックのテストも`tests/`に`*.test.js`として追加できます。
 
@@ -90,3 +90,9 @@ Google Identity Servicesでdrive.fileだけを許可し、ログイン後に検�
 トークンはメモリ内だけに保持し、画面を閉じると破棄します。
 この検証ページではGoogleの公式スクリプトを通信で読み込みます。
 手順と結果テンプレートは[Googleログイン検証](docs/google-login-test.md)にあります。
+
+## 送信待ちと再送のロジック（Issue #15）
+
+画像と保存先をIndexedDBへ残し、前面・オンラインのときに1件ずつ送る準備用ロジックです。
+失敗時の再送、認証待ち、件数と状態の購読を提供します。
+接続方法とテストの説明は[送信待ちと再送](docs/upload-queue.md)にあります。
