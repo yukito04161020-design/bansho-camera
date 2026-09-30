@@ -6,3 +6,4 @@ export const config = Object.freeze({
   // Googleドライブへの保存で要求する権限
   driveScopes: ["https://www.googleapis.com/auth/drive"],
 });
+// 練習用：自動レビューの修正の流れを確かめるための変更
