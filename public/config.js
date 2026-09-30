@@ -1,0 +1,6 @@
+// このファイルはそのまま公開されます。公開してよい値だけをまとめてください。
+// APIキー、クライアントシークレット、トークン、パスワードは置かないでください。
+// 後続のログイン実装から import { config } from "./config.js" で参照します。
+export const config = Object.freeze({
+  googleClientId: "",
+});
