@@ -1,17 +1,125 @@
 name: Claude Code review
 
-# PRに本人が @claude とコメントしたときだけ動く（自動では走らせない）。
-# 公開リポジトリのため、他人のコメントでは動かないようにしている。
+# 2つの動き方がある。
+# 1. auto-review：PRが作られた・更新されたときに自動でレビューする。
+#    指摘があれば、本人のトークン（CODEX_GITHUB_TOKEN）で @codex に修正を頼む。
+#    Codexが修正をpushすると、もう一度自動レビューが走る。1つのPRにつき最大3回まで。
+# 2. mention：本人がPRで @claude とコメントしたときに動く（手動で頼みたいとき用）。
+# 公開リポジトリのため、他人のコメントやフォークからのPRでは動かないようにしている。
 
 on:
+  pull_request:
+    types: [opened, synchronize, ready_for_review]
   issue_comment:
     types: [created]
   pull_request_review_comment:
     types: [created]
 
 jobs:
-  claude:
+  auto-review:
     if: |
+      github.event_name == 'pull_request' &&
+      github.event.pull_request.draft == false &&
+      github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    concurrency:
+      group: claude-auto-review-${{ github.event.pull_request.number }}
+      cancel-in-progress: true
+    permissions:
+      contents: read
+      pull-requests: write
+      issues: write
+      id-token: write
+      actions: read
+    env:
+      PR: ${{ github.event.pull_request.number }}
+      GH_REPO: ${{ github.repository }}
+      MAX_ROUNDS: 3
+      MARKER: "<!-- claude-auto-review -->"
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Count previous automatic reviews
+        id: rounds
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          n=$(gh api "repos/$GH_REPO/issues/$PR/comments" --paginate \
+            --jq "[.[] | select(.body | contains(\"$MARKER\"))] | length" | awk '{s+=$1} END {print s+0}')
+          echo "n=$n" >> "$GITHUB_OUTPUT"
+          mkdir -p review-output
+
+      - name: Run Claude Code review
+        if: steps.rounds.outputs.n < 3
+        uses: anthropics/claude-code-action@v1
+        env:
+          GH_TOKEN: ${{ github.token }}
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          prompt: |
+            あなたはこのリポジトリのレビュー担当です。PR #${{ github.event.pull_request.number }} をレビューしてください。
+
+            1. AGENTS.md と docs/design.md を読み、PRの説明（gh pr view ${{ github.event.pull_request.number }}）と、対応するIssue（gh issue view 番号）を確認する。
+            2. 差分を gh pr diff ${{ github.event.pull_request.number }} で確認する。
+            3. 観点は AGENTS.md の「レビューの観点」に従う（設計との食い違いと安全面に絞る）。
+            4. 結果を次の2つのファイルにだけ書く。ほかのファイルは変更しない。
+               - review-output/review.md：レビュー本文。日本語で、重要な順に、修正案を添える。修正が必要な点は、Codexがそのまま直せるよう具体的に書く。本文には「@」で始まるメンションを書かない。
+               - review-output/verdict.txt：修正が必要なら fix、不要なら ok の一語だけ。
+            5. 修正が必須でない軽微な提案しかない場合は ok にする。
+          claude_args: |
+            --max-turns 15
+            --allowedTools "Read,Glob,Grep,Write,Bash(gh pr view:*),Bash(gh pr diff:*),Bash(gh issue view:*)"
+
+      - name: Post review and hand off to Codex
+        if: steps.rounds.outputs.n < 3
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CODEX_TOKEN: ${{ secrets.CODEX_GITHUB_TOKEN }}
+          ROUND_BEFORE: ${{ steps.rounds.outputs.n }}
+        run: |
+          round=$((ROUND_BEFORE + 1))
+          verdict=$(tr -d '[:space:]' < review-output/verdict.txt 2>/dev/null || true)
+          # 本文中のメンションを無効化して、Claude と Codex が意図せず呼ばれないようにする
+          review=$(sed -E 's/@([A-Za-z0-9_-]+)/\1/g' review-output/review.md 2>/dev/null || true)
+          body_file=review-output/comment.md
+
+          {
+            echo "$MARKER"
+            echo "### Claude Code 自動レビュー（${round}回目／最大${MAX_ROUNDS}回）"
+            echo
+            echo "${review:-（レビュー本文を作れませんでした。Actionsのログを確認してください。）}"
+            echo
+          } > "$body_file"
+
+          if [ "$verdict" = "fix" ] && [ "$round" -lt "$MAX_ROUNDS" ] && [ -n "$CODEX_TOKEN" ]; then
+            {
+              echo "---"
+              echo "@codex 上のレビューの指摘を修正して、このPRのブランチにpushしてください。AGENTS.md と docs/design.md に従い、対応するIssueの範囲を超える変更はしないでください。"
+            } >> "$body_file"
+            GH_TOKEN="$CODEX_TOKEN" gh pr comment "$PR" --body-file "$body_file"
+          elif [ "$verdict" = "fix" ]; then
+            if [ -z "$CODEX_TOKEN" ]; then
+              echo "指摘がありますが、CODEX_GITHUB_TOKEN が未登録のため Codex への自動依頼はしていません。" >> "$body_file"
+            else
+              echo "指摘が残っていますが、自動の修正依頼は上限（${MAX_ROUNDS}回）に達しました。内容を確認して、必要なら Codex に直接頼んでください。" >> "$body_file"
+            fi
+            gh pr comment "$PR" --body-file "$body_file"
+          elif [ "$verdict" = "ok" ]; then
+            echo "設計との食い違いと安全面の問題はありません。自動テストの結果と実機チェックを確認して、マージしてください。" >> "$body_file"
+            gh pr comment "$PR" --body-file "$body_file"
+          else
+            echo "レビュー結果の判定を読み取れませんでした。Actionsのログを確認してください。" >> "$body_file"
+            gh pr comment "$PR" --body-file "$body_file"
+          fi
+
+  mention:
+    if: |
+      github.event_name != 'pull_request' &&
       github.event.comment.user.login == github.repository_owner &&
       contains(github.event.comment.body, '@claude') &&
       (github.event_name == 'pull_request_review_comment' || github.event.issue.pull_request)
