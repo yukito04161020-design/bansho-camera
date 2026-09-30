@@ -4,6 +4,8 @@ on:
   pull_request:
   push:
     branches: [main]
+  # Claude Code が自動修正をpushしたあと、このワークフローを手動起動する
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -26,3 +28,4 @@ jobs:
           node-version-file: .nvmrc
       - run: npm ci
       - run: npm test
+      - run: npm run build

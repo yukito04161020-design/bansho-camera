@@ -36,6 +36,8 @@ h1 {
   color: #49625d;
 }
 
+.version { color: #49625d; font-size: 0.8rem; }
+
 @media (display-mode: standalone) {
   .install-hint {
     display: none;

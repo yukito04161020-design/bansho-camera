@@ -1,4 +1,5 @@
 import { config } from "./config.js";
+import { initializeUpdates } from "./app-update.js";
 import { createTestText, TokenSession, tokenClientOptions } from "./login-logic.js";
 
 const login = document.querySelector("#login");
@@ -15,6 +16,11 @@ let uploading = false;
 let deferredCreate = false;
 let attempt = 0;
 let uploadController = null;
+const updates = initializeUpdates(() => ({
+  cameraActive: false,
+  imagePreview: false,
+  operationActive: authorizing || uploading || deferredCreate || session.snapshot().status === "valid",
+}));
 
 const timeFormat = new Intl.DateTimeFormat("ja-JP", {
   timeZone: "Asia/Tokyo", year: "numeric", month: "2-digit", day: "2-digit",
@@ -46,7 +52,7 @@ function render() {
 }
 
 async function createText() {
-  if (authorizing || uploading) return;
+  if (authorizing || uploading || updates.isNavigating()) return;
   if (document.hidden) { deferredCreate = true; return; }
   deferredCreate = false;
   const current = attempt;
@@ -75,7 +81,7 @@ async function createText() {
 }
 
 function authorize(retry) {
-  if (!libraryReady || authorizing || uploading) return;
+  if (!libraryReady || authorizing || uploading || updates.isNavigating()) return;
   authorizing = true;
   const current = ++attempt;
   status.textContent = "Googleの画面で操作してください。戻らない場合は、Googleの画面を閉じて「ログイン待ちを中断する」を押してください。";
