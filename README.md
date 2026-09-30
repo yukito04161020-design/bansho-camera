@@ -38,7 +38,7 @@ python -m http.server 8000 --bind 127.0.0.1 --directory public
 
 - `public/`：編集用のHTML、CSS、JavaScript、manifest、仮アイコン、設定。
 - `dist/`：`npm run build`で版番号を埋め込んだPages公開用の出力（Gitには含めません）。
-- `public/config.js`：公開してよい設定値の置き場所。GoogleクライアントIDは現在空欄です。
+- `public/config.js`：公開してよい設定値の置き場所。Issue #1のGoogleクライアントIDを設定しています。
 - `examples/`、`tests/`、`docs/`：Pagesの配信対象には含めません。
 
 APIキー、クライアントシークレット、トークン、パスワードを設定ファイルやアプリに書かないでください。
@@ -81,3 +81,12 @@ URLは相対指定なので、Pagesの`/bansho-camera/`以下でも読み込め�
 ズームを操作できます。カメラ名・現在倍率を表示し、選択を端末内に記憶します。
 iPhoneでの確認手順と記録用テンプレートは
 [レンズ・ズーム検証の手順](docs/camera-zoom-test.md)にまとめています。
+
+## Googleログインと維持の検証（Issue #6）
+
+トップページから「Googleログインを検証する」を開けます。
+Google Identity Servicesでdrive.fileだけを許可し、ログイン後に検証用テキストを
+ドライブへ作成します。取得時刻・期限の表示と、トークンを取り直すボタンを用意しています。
+トークンはメモリ内だけに保持し、画面を閉じると破棄します。
+この検証ページではGoogleの公式スクリプトを通信で読み込みます。
+手順と結果テンプレートは[Googleログイン検証](docs/google-login-test.md)にあります。

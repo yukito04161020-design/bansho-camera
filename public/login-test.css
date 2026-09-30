@@ -1,0 +1,21 @@
+body { display: block; }
+main { margin: 0 auto; max-width: 36rem; }
+h1 { font-size: 1.5rem; }
+.buttons { display: flex; flex-wrap: wrap; gap: 0.6rem; }
+button {
+  font: inherit;
+  min-height: 44px;
+  padding: 0.65rem 0.8rem;
+  border: 1px solid #164e46;
+  border-radius: 0.4rem;
+  color: #fff;
+  background: #164e46;
+  cursor: pointer;
+}
+button:disabled { opacity: 0.45; cursor: default; }
+button:focus-visible, a:focus-visible { outline: 3px solid #b27700; outline-offset: 3px; }
+dt { font-weight: 600; }
+dd { margin: 0 0 0.7rem; }
+.note { font-size: 0.9rem; color: #49625d; }
+#status, #file-status { overflow-wrap: anywhere; }
+[hidden] { display: none !important; }

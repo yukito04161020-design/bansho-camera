@@ -1,6 +1,7 @@
 // 不明な状態や送信待ち件数の取得失敗では切り替えない、安全側の判定です。
-export function canApplyUpdate({ cameraActive, imagePreview, pageVisible, pendingUploads } = {}) {
-  return cameraActive === false && imagePreview === false && pageVisible === true && pendingUploads === 0;
+export function canApplyUpdate({ cameraActive, imagePreview, pageVisible, pendingUploads, operationActive = false } = {}) {
+  return cameraActive === false && imagePreview === false && pageVisible === true && pendingUploads === 0
+    && operationActive === false;
 }
 
 export function createUpdateChecker({ currentVersion, readLatestVersion, readPendingUploads, getActivity, applyUpdate }) {

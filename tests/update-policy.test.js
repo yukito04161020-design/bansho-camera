@@ -87,6 +87,25 @@ test("保留後、安全になった次回の起動確認で切り替えられ�
   assert.equal(await sample.check(), "applied");
 });
 
+test("ログイン・作成・有効なトークンの保持中は更新を保留し、終了後に切り替える", async () => {
+  let operationActive = true;
+  const sample = fixture({ getActivity: () => ({ ...idle, operationActive }) });
+  assert.equal(await sample.check(), "deferred");
+  assert.deepEqual(sample.applied, []);
+  operationActive = false;
+  assert.equal(await sample.check(), "applied");
+});
+
+test("版確認中にログイン操作が始まった場合も更新を保留する", async () => {
+  let operationActive = false;
+  const sample = fixture({
+    readPendingUploads: async () => { operationActive = true; return 0; },
+    getActivity: () => ({ ...idle, operationActive }),
+  });
+  assert.equal(await sample.check(), "deferred");
+  assert.deepEqual(sample.applied, []);
+});
+
 test("通信失敗・送信待ち取得失敗では切り替えず、後で再試行できる", async () => {
   for (const property of ["readLatestVersion", "readPendingUploads", "applyUpdate"]) {
     let failed = true;

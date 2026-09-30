@@ -12,7 +12,7 @@ test("公開物に同じコミットの版情報とキャッシュ回避用URL�
   try {
     await buildSite({ revision, sourceDirectory: fileURLToPath(new URL("../public", import.meta.url)), outputDirectory });
     assert.deepEqual(JSON.parse(await readFile(join(outputDirectory, "version.json"), "utf8")), { version: revision });
-    for (const page of ["index.html", "camera-test.html"]) {
+    for (const page of ["index.html", "camera-test.html", "login-test.html"]) {
       const html = await readFile(join(outputDirectory, page), "utf8");
       assert.ok(html.includes(`name="app-version" content="${revision}"`));
       assert.ok(html.includes("data-app-version>1234567</span>"));
@@ -21,7 +21,7 @@ test("公開物に同じコミットの版情報とキャッシュ回避用URL�
         assert.ok(asset[1].endsWith(`?v=${revision}`), asset[1]);
       }
     }
-    for (const file of ["home.js", "app-update.js", "camera-preview.js", "camera-options.js"]) {
+    for (const file of ["home.js", "app-update.js", "camera-preview.js", "camera-options.js", "login-preview.js"]) {
       const script = await readFile(join(outputDirectory, file), "utf8");
       for (const dependency of script.matchAll(/from ["']([^"']+)["']/g)) {
         assert.ok(dependency[1].endsWith(`?v=${revision}`), dependency[1]);
