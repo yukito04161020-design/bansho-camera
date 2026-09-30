@@ -2,8 +2,9 @@ name: Claude Code review
 
 # 2つの動き方がある。
 # 1. auto-review：PRが作られた・更新されたときに自動でレビューする。
-#    指摘があれば、本人のトークン（CODEX_GITHUB_TOKEN）で @codex に修正を頼む。
-#    Codexが修正をpushすると、もう一度自動レビューが走る。1つのPRにつき最大3回まで。
+#    必須の指摘があれば、Claude Code がその指摘だけを直してテストし、PRのブランチにpushする。
+#    そのあと同じジョブの中でもう一度レビューし、結果をPRにコメントする。
+#    1つのPRにつき最大3回まで（Codexや本人のpushで再び動いた分も数える）。
 # 2. mention：本人がPRで @claude とコメントしたときに動く（手動で頼みたいとき用）。
 # 公開リポジトリのため、他人のコメントやフォークからのPRでは動かないようにしている。
 
@@ -22,26 +23,28 @@ jobs:
       github.event.pull_request.draft == false &&
       github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
     concurrency:
       group: claude-auto-review-${{ github.event.pull_request.number }}
       cancel-in-progress: true
     permissions:
-      contents: read
+      contents: write
       pull-requests: write
       issues: write
       id-token: write
-      actions: read
+      actions: write
     env:
       PR: ${{ github.event.pull_request.number }}
+      HEAD_REF: ${{ github.event.pull_request.head.ref }}
       GH_REPO: ${{ github.repository }}
       MAX_ROUNDS: 3
       MARKER: "<!-- claude-auto-review -->"
     steps:
-      - name: Checkout repository
+      - name: Checkout PR branch
         uses: actions/checkout@v6
         with:
-          fetch-depth: 1
+          ref: ${{ github.event.pull_request.head.ref }}
+          fetch-depth: 0
           persist-credentials: false
 
       - name: Count previous automatic reviews
@@ -53,8 +56,19 @@ jobs:
             --jq "[.[] | select(.body | contains(\"$MARKER\"))] | length" | awk '{s+=$1} END {print s+0}')
           echo "n=$n" >> "$GITHUB_OUTPUT"
           mkdir -p review-output
+          echo "review-output/" >> .git/info/exclude
 
-      - name: Run Claude Code review
+      - name: Set up Node.js
+        if: steps.rounds.outputs.n < 3
+        uses: actions/setup-node@v6
+        with:
+          node-version-file: .nvmrc
+
+      - name: Install dependencies
+        if: steps.rounds.outputs.n < 3
+        run: npm ci
+
+      - name: Review
         if: steps.rounds.outputs.n < 3
         uses: anthropics/claude-code-action@v1
         env:
@@ -68,54 +82,138 @@ jobs:
             2. 差分を gh pr diff ${{ github.event.pull_request.number }} で確認する。
             3. 観点は AGENTS.md の「レビューの観点」に従う（設計との食い違いと安全面に絞る）。
             4. 結果を次の2つのファイルにだけ書く。ほかのファイルは変更しない。
-               - review-output/review.md：レビュー本文。日本語で、重要な順に、修正案を添える。修正が必要な点は、Codexがそのまま直せるよう具体的に書く。本文には「@」で始まるメンションを書かない。
-               - review-output/verdict.txt：修正が必要なら fix、不要なら ok の一語だけ。
+               - review-output/review.md：レビュー本文。日本語で、重要な順に書く。修正が必須の指摘には見出しに【必須】を付け、どのファイルのどこをどう直すかを具体的に書く。本文には「@」で始まるメンションを書かない。
+               - review-output/verdict.txt：修正が必須の指摘があれば fix、なければ ok の一語だけ。
             5. 修正が必須でない軽微な提案しかない場合は ok にする。
           claude_args: |
             --max-turns 15
             --allowedTools "Read,Glob,Grep,Write,Bash(gh pr view:*),Bash(gh pr diff:*),Bash(gh issue view:*)"
 
-      - name: Post review and hand off to Codex
+      - name: Read verdict
+        if: steps.rounds.outputs.n < 3
+        id: first
+        run: |
+          v=$(tr -d '[:space:]' < review-output/verdict.txt 2>/dev/null || true)
+          echo "verdict=$v" >> "$GITHUB_OUTPUT"
+
+      - name: Fix required findings
+        if: steps.rounds.outputs.n < 3 && steps.first.outputs.verdict == 'fix'
+        uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          prompt: |
+            review-output/review.md は、このPRに対するレビューです。見出しに【必須】と付いた指摘だけを直してください。
+
+            - AGENTS.md と docs/design.md に従う。
+            - 【必須】以外の提案や、指摘に関係のない箇所は変更しない。Issueの範囲を超える変更もしない。
+            - review-output/ の中のファイルと、ワークフロー（.github/）は変更しない。
+            - 直したら npm test を実行し、すべて通ることを確かめる。通らない場合は、通るように直す。
+            - git の commit や push はしない（あとの手順で行う）。
+            - 最後に、何をどう直したかを review-output/fix.md に日本語で短く書く。直せなかった指摘があれば、その理由も書く。「@」で始まるメンションは書かない。
+          claude_args: |
+            --max-turns 25
+            --allowedTools "Read,Glob,Grep,Edit,Write,Bash(npm test:*),Bash(npm run build:*),Bash(git diff:*),Bash(git status:*)"
+
+      - name: Commit and push the fix
+        if: steps.rounds.outputs.n < 3 && steps.first.outputs.verdict == 'fix'
+        id: push
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # ワークフローの変更は反映しない
+          git checkout -- .github 2>/dev/null || true
+          git clean -fdq -- .github 2>/dev/null || true
+          if [ -z "$(git status --porcelain)" ]; then
+            echo "pushed=false" >> "$GITHUB_OUTPUT"
+            echo "reason=nochange" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if ! npm test; then
+            git reset -q --hard
+            git clean -fdq
+            echo "pushed=false" >> "$GITHUB_OUTPUT"
+            echo "reason=testfail" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "Claude Code: 自動レビューの必須の指摘を修正"
+          git push "https://x-access-token:${GH_TOKEN}@github.com/${GH_REPO}.git" "HEAD:${HEAD_REF}"
+          # GITHUB_TOKEN でのpushではテストが自動で走らないため、手動起動する
+          gh workflow run test.yml --ref "$HEAD_REF" || true
+          echo "pushed=true" >> "$GITHUB_OUTPUT"
+
+      - name: Re-review after the fix
+        if: steps.push.outputs.pushed == 'true'
+        uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          prompt: |
+            このPRに対する最初のレビューが review-output/review.md に、その指摘を受けた修正の内容が review-output/fix.md にあります。
+            修正はすでにこのブランチにコミット済みです（git log -1 と git show HEAD で確認できる）。
+
+            1. 修正によって【必須】の指摘が解消されたか、新しい問題が入っていないかを、AGENTS.md の「レビューの観点」で確認する。
+            2. 結果を review-output/review2.md に日本語で短く書く。「@」で始まるメンションは書かない。
+            3. review-output/verdict2.txt に、まだ修正が必須なら fix、なければ ok の一語だけを書く。
+            4. ほかのファイルは変更しない。
+          claude_args: |
+            --max-turns 10
+            --allowedTools "Read,Glob,Grep,Write,Bash(git log:*),Bash(git show:*),Bash(git diff:*)"
+
+      - name: Post result
         if: steps.rounds.outputs.n < 3
         env:
           GH_TOKEN: ${{ github.token }}
-          CODEX_TOKEN: ${{ secrets.CODEX_GITHUB_TOKEN }}
           ROUND_BEFORE: ${{ steps.rounds.outputs.n }}
+          VERDICT1: ${{ steps.first.outputs.verdict }}
+          PUSHED: ${{ steps.push.outputs.pushed }}
+          REASON: ${{ steps.push.outputs.reason }}
         run: |
           round=$((ROUND_BEFORE + 1))
-          verdict=$(tr -d '[:space:]' < review-output/verdict.txt 2>/dev/null || true)
-          # 本文中のメンションを無効化して、Claude と Codex が意図せず呼ばれないようにする
-          review=$(sed -E 's/@([A-Za-z0-9_-]+)/\1/g' review-output/review.md 2>/dev/null || true)
-          body_file=review-output/comment.md
-
+          clean() { sed -E 's/@([A-Za-z0-9_-]+)/\1/g' "$1" 2>/dev/null || true; }
+          body=review-output/comment.md
           {
             echo "$MARKER"
             echo "### Claude Code 自動レビュー（${round}回目／最大${MAX_ROUNDS}回）"
             echo
-            echo "${review:-（レビュー本文を作れませんでした。Actionsのログを確認してください。）}"
+            r=$(clean review-output/review.md)
+            echo "${r:-（レビュー本文を作れませんでした。Actionsのログを確認してください。）}"
             echo
-          } > "$body_file"
+          } > "$body"
 
-          if [ "$verdict" = "fix" ] && [ "$round" -lt "$MAX_ROUNDS" ] && [ -n "$CODEX_TOKEN" ]; then
+          if [ "$VERDICT1" = "ok" ]; then
+            echo "設計との食い違いと安全面の問題はありません。自動テストの結果と実機チェックを確認して、マージしてください。" >> "$body"
+          elif [ "$VERDICT1" = "fix" ] && [ "$PUSHED" = "true" ]; then
+            v2=$(tr -d '[:space:]' < review-output/verdict2.txt 2>/dev/null || true)
             {
               echo "---"
-              echo "@codex 上のレビューの指摘を修正して、このPRのブランチにpushしてください。AGENTS.md と docs/design.md に従い、対応するIssueの範囲を超える変更はしないでください。"
-            } >> "$body_file"
-            GH_TOKEN="$CODEX_TOKEN" gh pr comment "$PR" --body-file "$body_file"
-          elif [ "$verdict" = "fix" ]; then
-            if [ -z "$CODEX_TOKEN" ]; then
-              echo "指摘がありますが、CODEX_GITHUB_TOKEN が未登録のため Codex への自動依頼はしていません。" >> "$body_file"
+              echo "#### Claude Code による修正"
+              echo
+              clean review-output/fix.md
+              echo
+              echo "修正はこのブランチにコミット済みです。テストも手動で起動しました。"
+              echo
+              echo "#### 修正後の再レビュー"
+              echo
+              clean review-output/review2.md
+              echo
+            } >> "$body"
+            if [ "$v2" = "ok" ]; then
+              echo "修正後の問題はありません。自動テストの結果と実機チェックを確認して、マージしてください。" >> "$body"
             else
-              echo "指摘が残っていますが、自動の修正依頼は上限（${MAX_ROUNDS}回）に達しました。内容を確認して、必要なら Codex に直接頼んでください。" >> "$body_file"
+              echo "修正後も指摘が残っています。内容を確認して、Codex に直接頼むか判断してください。" >> "$body"
             fi
-            gh pr comment "$PR" --body-file "$body_file"
-          elif [ "$verdict" = "ok" ]; then
-            echo "設計との食い違いと安全面の問題はありません。自動テストの結果と実機チェックを確認して、マージしてください。" >> "$body_file"
-            gh pr comment "$PR" --body-file "$body_file"
+          elif [ "$VERDICT1" = "fix" ]; then
+            case "$REASON" in
+              testfail) echo "修正を試みましたが自動テストが通らなかったため、pushしていません。Codex に直接頼んでください。" >> "$body" ;;
+              nochange) echo "修正を試みましたが変更が作れませんでした。Codex に直接頼んでください。" >> "$body" ;;
+              *) echo "指摘がありますが、自動修正は実行できませんでした。Actionsのログを確認してください。" >> "$body" ;;
+            esac
           else
-            echo "レビュー結果の判定を読み取れませんでした。Actionsのログを確認してください。" >> "$body_file"
-            gh pr comment "$PR" --body-file "$body_file"
+            echo "レビュー結果の判定を読み取れませんでした。Actionsのログを確認してください。" >> "$body"
           fi
+          gh pr comment "$PR" --body-file "$body"
 
   mention:
     if: |

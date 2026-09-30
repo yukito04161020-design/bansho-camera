@@ -4,6 +4,8 @@ on:
   pull_request:
   push:
     branches: [main]
+  # Claude Code が自動修正をpushしたあと、このワークフローを手動起動する
+  workflow_dispatch:
 
 permissions:
   contents: read
