@@ -1,0 +1,12 @@
+#destination-status { display: block; width: 100%; background: transparent; border: 0; padding: 0.25rem 0; text-align: left; font-size: 0.9rem; font-weight: 700; overflow-wrap: anywhere; }
+#save-options { max-height: 35dvh; }
+#save-options input { width: 100%; font: inherit; min-height: 44px; margin: 0.25rem 0; }
+#save-options button { margin-bottom: 0.35rem; }
+#auth-status, .transfer, #save-status, #image-destination { font-size: 0.8rem; }
+.review-header { max-height: 55dvh; overflow-y: auto; flex: 0 0 auto; }
+#save-image { background: #216442; }
+@media (orientation: landscape) and (max-height: 500px) {
+  #save-options { max-height: 30dvh; }
+  .review-header { max-height: 65dvh; }
+  #retry-upload { font-size: 0.75rem; min-height: 32px; padding: 0.25rem 0.6rem; }
+}

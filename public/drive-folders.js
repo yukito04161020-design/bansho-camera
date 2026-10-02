@@ -121,6 +121,12 @@ export function createDriveFolders({ session, fetcher = globalThis.fetch } = {})
     return { name, folderId: uniqueNamed(files, name)?.id || null };
   }
   return {
+    async listSessionFolders(className, { signal } = {}) {
+      classFolderName(className);
+      const root = await find("root", "板書", signal);
+      const lesson = root && await find(root.id, className, signal);
+      return lesson ? list(lesson.id, undefined, signal) : [];
+    },
     async listClasses({ signal } = {}) {
       const root = await find("root", "板書", signal);
       if (!root) return [];

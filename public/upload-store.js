@@ -1,3 +1,5 @@
+import { captureSettings } from "./capture-save.js";
+
 export class QueueStorageError extends Error {
   constructor() { super("送信待ちを端末内に保存・読み込みできませんでした。"); this.name = "QueueStorageError"; }
 }
@@ -78,6 +80,40 @@ export async function openUploadStore({ indexedDB = globalThis.indexedDB, databa
         record.attempts += 1;
         uploads.put(record);
         done(record);
+      };
+    }),
+    setDriveFileId: (id, fileId) => {
+      if (typeof fileId !== "string" || !/^[A-Za-z0-9_-]+$/.test(fileId)) throw new TypeError("画像IDが不正です。");
+      return transaction(db, "readwrite", (uploads, state, done) => {
+        uploads.get(id).onsuccess = (event) => {
+          const record = event.target.result;
+          if (!record || (record.driveFileId && record.driveFileId !== fileId)) {
+            event.target.transaction.abort();
+            return;
+          }
+          record.driveFileId = fileId;
+          uploads.put(record);
+          done(fileId);
+        };
+      });
+    },
+    readCaptureSettings: () => transaction(db, "readonly", (uploads, state, done) => {
+      state.get("captureSettings").onsuccess = (event) => {
+        try { done(captureSettings(event.target.result)); } catch { done(captureSettings()); }
+      };
+    }),
+    writeCaptureSettings: (input) => {
+      const value = captureSettings(input);
+      return transaction(db, "readwrite", (uploads, state) => { state.put(value, "captureSettings"); });
+    },
+    pendingDestinations: () => transaction(db, "readonly", (uploads, state, done) => {
+      const destinations = [];
+      done(destinations);
+      uploads.openCursor().onsuccess = (event) => {
+        const cursor = event.target.result;
+        if (!cursor) return;
+        destinations.push({ className: cursor.value.className, sessionFolderName: cursor.value.sessionFolderName });
+        cursor.continue();
       };
     }),
     succeed: (id) => transaction(db, "readwrite", (uploads) => { uploads.delete(id); }),

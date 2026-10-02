@@ -11,7 +11,8 @@
     <link rel="manifest" href="./manifest.webmanifest">
     <link rel="apple-touch-icon" href="./icons/apple-touch-icon.png">
     <link rel="stylesheet" href="./camera-test.css">
-    <script type="module" src="./camera-preview.js"></script>
+    <link rel="stylesheet" href="./capture.css">
+    <script type="module" src="./capture-app.js"></script>
   </head>
   <body>
     <main>
@@ -19,6 +20,22 @@
         <video id="camera" autoplay muted playsinline aria-label="背面カメラの映像"></video>
         <header class="overlay top">
           <h1>板書を撮影</h1>
+          <button id="destination-status" type="button" aria-controls="save-options" aria-expanded="true">保存先を準備しています。</button>
+          <details id="save-options" open>
+            <summary>授業と保存先を変更</summary>
+            <p id="auth-status" role="status">Googleログインを準備しています。</p>
+            <div class="buttons">
+              <button id="google-login" type="button" disabled>Googleでログイン</button>
+              <button id="cancel-login" type="button" hidden>ログイン待ちを中断</button>
+            </div>
+            <label for="class-name">授業名（一覧から選ぶか入力）</label>
+            <input id="class-name" type="text" list="class-list" autocomplete="off">
+            <datalist id="class-list"></datalist>
+            <button id="apply-class" type="button" disabled>この授業を使う</button>
+            <label for="session-number">回数の手動変更（空欄なら自動）</label>
+            <input id="session-number" type="number" min="1" step="1" inputmode="numeric" placeholder="自動">
+            <button id="refresh-folders" type="button" disabled>ドライブの一覧を再取得</button>
+          </details>
           <p id="resolution">映像：未取得</p>
           <p id="request">要求：背面カメラ・高解像度</p>
           <p id="camera-name">カメラ：未取得</p>
@@ -46,7 +63,10 @@
             <button id="capture" type="button" disabled>撮影</button>
             <button id="stop" type="button" disabled>停止</button>
           </div>
-          <p class="note">撮った画像を確認して、続けて撮影できます。保存機能の追加までは画面を閉じると消えます。</p>
+          <p class="note">確認画面の「保存」で端末内に残し、前面でドライブへ送ります。</p>
+          <p class="transfer" data-pending-count>送信待ち：確認中</p>
+          <p class="transfer" data-transfer-status role="status"></p>
+          <button id="retry-upload" type="button" disabled>送信を再開する</button>
           <a href="./">ホームに戻る</a>
         </div>
       </section>
@@ -55,12 +75,17 @@
           <h1>撮影画像の確認</h1>
           <p id="image-resolution"></p>
           <p id="image-camera"></p>
+          <p id="image-destination"></p>
+          <p class="transfer" data-pending-count>送信待ち：確認中</p>
+          <p class="transfer" data-transfer-status role="status"></p>
           <p class="version">版：<span data-app-version>開発版</span></p>
           <p class="version" data-update-status role="status"></p>
           <div class="buttons">
             <button id="actual-size" type="button" aria-pressed="false">等倍で確認</button>
-            <button id="back" type="button">次の撮影</button>
+            <button id="save-image" type="button" disabled>保存して次の撮影</button>
+            <button id="back" type="button">保存せず撮り直す</button>
           </div>
+          <p id="save-status" role="status">確認したら保存してください。</p>
           <p>等倍では上下左右にスクロールして、文字を確認できます。</p>
         </header>
         <div id="image-area" class="image-area" tabindex="0" aria-label="撮影画像。等倍ではスクロールできます。">
