@@ -5,6 +5,14 @@
 - 設計書：[docs/design.md](docs/design.md)
 - AIエージェント向けの約束事：[AGENTS.md](AGENTS.md)
 - フォルダ名と回数のロジック：[docs/folder-names.md](docs/folder-names.md)
+- まとめて行う実機検証：[docs/device-test-chart.md](docs/device-test-chart.md)
+
+## 撮影（Issue #5）
+
+ホームの「板書を撮影する」から撮影画面を開きます。背面カメラと高解像度要求、
+対応カメラのピンチ・倍率バー、無音の1コマ切り出し、等倍確認、次の撮影、Wake Lockを使います。
+検証ページと同じカメラ処理を共有し、画像は保存機能の追加まではメモリ内だけに保持します。
+実機未確認項目は検証チャートに集約し、開発は結果を待たず進めます。
 
 ## 開発の土台（Issue #2）
 

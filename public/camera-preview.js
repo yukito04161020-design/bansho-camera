@@ -254,7 +254,7 @@ async function startCamera({ deviceId = cameraSelect.value, allowFallback = true
     if (current !== generation) return;
     rememberCamera();
     status.textContent = facingKnown
-      ? "板面を映像に収めて「1コマを撮影」を押してください。"
+      ? `板面を映像に収めて「${captureButton.textContent}」を押してください。`
       : "背面を指定しましたが向きの情報は取得できません。映像が背面カメラか確認してください。";
     if (camera.fallback) status.textContent = "前回のカメラを使えないため、背面の自動選択に戻しました。映像を確認してください。";
     updateVideoState();
