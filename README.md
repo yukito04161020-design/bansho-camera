@@ -5,6 +5,7 @@
 - 設計書：[docs/design.md](docs/design.md)
 - AIエージェント向けの約束事：[AGENTS.md](AGENTS.md)
 - フォルダ名と回数のロジック：[docs/folder-names.md](docs/folder-names.md)
+- Driveフォルダの検索・再利用・作成：[docs/drive-folders.md](docs/drive-folders.md)
 - まとめて行う実機検証：[docs/device-test-chart.md](docs/device-test-chart.md)
 
 ## 撮影（Issue #5）
