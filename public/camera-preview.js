@@ -1,6 +1,7 @@
 import { captureFrame } from "./camera-logic.js";
 import { applyTrackZoom, cameraOptions, normalizeZoom, openSelectedCamera, readCameraPreference, writeCameraPreference, zoomRange } from "./camera-options.js";
 import { initializeUpdates } from "./app-update.js";
+import { createLiveZoom, createPinchZoom } from "./camera-zoom.js";
 
 const video = document.querySelector("#camera");
 const canvas = document.querySelector("#image");
@@ -26,6 +27,7 @@ let wakeLock = null;
 let generation = 0;
 let starting = false;
 let zoomApplying = false;
+let liveZoom = null;
 let range = null;
 let currentDeviceId = "";
 let currentName = "名前未取得";
@@ -47,12 +49,13 @@ function rememberCamera() {
     ? "" : "設定を記憶できません。この画面では引き続き検証できます。";
 }
 
-function showZoom(result) {
+function showZoom(result, settled = true) {
   currentZoom = result.actual ?? result.requested;
-  zoomSlider.value = normalizeZoom(currentZoom, range);
+  if (settled) zoomSlider.value = normalizeZoom(currentZoom, range);
   zoomStatus.textContent = result.actual === null
     ? `倍率：取得できません（指定 ${result.requested}×）`
     : `倍率：${result.actual}×${Math.abs(result.actual - result.requested) > range.step / 2 ? `（指定 ${result.requested}×は反映されませんでした）` : ""}`;
+  if (!settled) zoomStatus.textContent += `（変更中：${zoomSlider.value}×）`;
 }
 
 async function refreshCameraList(track, current) {
@@ -113,15 +116,37 @@ async function configureZoom(track, current) {
       zoomStatus.textContent += "（前回の倍率を復元できませんでした）";
     }
   }
+  if (current !== generation) return;
+  liveZoom = createLiveZoom({
+    range, initialZoom: currentZoom,
+    applyZoom: (value) => applyTrackZoom(track, value, range),
+    onRequested: (value) => {
+      zoomSlider.value = value;
+      zoomStatus.textContent = `倍率：${currentZoom}×（変更中：${value}×）`;
+    },
+    onApplied: (result, { settled }) => {
+      showZoom(result, settled);
+      if (settled) rememberCamera();
+      resolution.textContent = `映像：${video.videoWidth} × ${video.videoHeight} px`;
+    },
+    onError: ({ settled }) => {
+      if (!settled) return;
+      const actual = track.getSettings?.().zoom;
+      showZoom({ requested: normalizeZoom(currentZoom, range), actual: Number.isFinite(actual) && actual > 0 ? actual : null });
+      zoomStatus.textContent += "（ズーム変更に失敗しました）";
+    },
+    onBusy: (value) => { zoomApplying = value; updateVideoState(); },
+  });
 }
 
 function updateVideoState() {
   const track = stream?.getVideoTracks()[0];
-  const ready = Boolean(!starting && !zoomApplying && track && track.readyState === "live" && !track.muted &&
+  const ready = Boolean(!starting && !document.hidden && track && track.readyState === "live" && !track.muted &&
     !video.paused && video.readyState >= 2 && video.videoWidth > 0 && video.videoHeight > 0);
-  captureButton.disabled = !ready;
+  captureButton.disabled = !ready || zoomApplying;
   zoomSlider.disabled = !ready || !range || range.max <= range.min;
-  cameraSelect.disabled = starting || zoomApplying || cameraSelect.options.length <= 1;
+  video.classList.toggle("zoom-enabled", !zoomSlider.disabled);
+  cameraSelect.disabled = starting || cameraSelect.options.length <= 1;
   if (ready) resolution.textContent = `映像：${video.videoWidth} × ${video.videoHeight} px`;
 }
 
@@ -153,6 +178,10 @@ async function keepScreenOn() {
 
 function stopCamera() {
   generation += 1;
+  liveZoom?.dispose();
+  liveZoom = null;
+  pinch.reset();
+  video.classList.remove("zoom-enabled");
   stream?.getTracks().forEach((track) => track.stop());
   stream = null;
   zoomApplying = false;
@@ -249,32 +278,19 @@ cameraSelect.addEventListener("change", () => {
   stopCamera();
   void startCamera({ deviceId, allowFallback: false });
 });
-zoomSlider.addEventListener("change", async () => {
-  const track = stream?.getVideoTracks()[0];
-  if (!track || !range || zoomApplying) return;
-  const current = generation;
-  zoomApplying = true;
-  updateVideoState();
-  try {
-    const result = await applyTrackZoom(track, Number(zoomSlider.value), range);
-    if (current === generation) {
-      showZoom(result);
-      rememberCamera();
-      resolution.textContent = `映像：${video.videoWidth} × ${video.videoHeight} px`;
-    }
-  } catch {
-    if (current === generation) {
-      const actual = track.getSettings?.().zoom;
-      showZoom({ requested: normalizeZoom(currentZoom, range), actual: Number.isFinite(actual) && actual > 0 ? actual : null });
-      zoomStatus.textContent += "（ズーム変更に失敗しました）";
-    }
-  } finally {
-    if (current === generation) {
-      zoomApplying = false;
-      updateVideoState();
-    }
-  }
+zoomSlider.addEventListener("input", () => { liveZoom?.request(Number(zoomSlider.value)); });
+const pinch = createPinchZoom({ readZoom: () => Number(zoomSlider.value), onZoom: (value) => liveZoom?.request(value) });
+video.addEventListener("pointerdown", (event) => {
+  if (event.pointerType !== "touch" || zoomSlider.disabled || !liveZoom) return;
+  if (pinch.start(event.pointerId, event.clientX, event.clientY)) video.setPointerCapture(event.pointerId);
 });
+video.addEventListener("pointermove", (event) => {
+  if (event.pointerType !== "touch" || zoomSlider.disabled || !liveZoom) return;
+  pinch.move(event.pointerId, event.clientX, event.clientY);
+});
+for (const event of ["pointerup", "pointercancel", "lostpointercapture"]) {
+  video.addEventListener(event, (pointer) => { pinch.end(pointer.pointerId); });
+}
 stopButton.addEventListener("click", () => {
   stopCamera();
   status.textContent = "カメラを停止しました。「カメラを開始」で再開できます。";
