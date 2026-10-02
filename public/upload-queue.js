@@ -87,7 +87,8 @@ export async function createUploadQueue({
         const result = await upload({
           id: item.id, blob: item.blob, className: item.className,
           sessionFolderName: item.sessionFolderName, capturedAt: item.capturedAt,
-        });
+          driveFileId: item.driveFileId || null,
+        }, { persistDriveFileId: (fileId) => store.setDriveFileId(item.id, fileId) });
         if (result?.ok !== true) reason = result?.reason;
         if (result?.ok !== true && !reasons.has(reason)) reason = "upload";
       } catch (error) { reason = error instanceof UploadFailure ? error.reason : "upload"; }
@@ -155,6 +156,9 @@ export async function createUploadQueue({
       return id;
     },
     count: () => store.count(),
+    readCaptureSettings: () => store.readCaptureSettings(),
+    writeCaptureSettings: (value) => store.writeCaptureSettings(value),
+    pendingDestinations: () => store.pendingDestinations(),
     snapshot: () => ({ ...state }),
     subscribe(subscriber) {
       if (typeof subscriber !== "function") throw new TypeError("購読する関数を指定してください。");

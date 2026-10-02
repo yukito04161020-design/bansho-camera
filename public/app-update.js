@@ -1,8 +1,13 @@
 import { createUpdateChecker } from "./update-policy.js";
+import { openUploadStore } from "./upload-store.js";
 
 // 送信待ち機能の実装時は、起動前にIndexedDBの件数を読む関数を登録してください。
 // 取得失敗時はthrowまたは不明な値を返すと、自動切り替えを保留します。
-let pendingUploadCounter = async () => 0;
+let pendingUploadCounter = async () => {
+  const store = await openUploadStore();
+  try { return await store.count(); }
+  finally { store.close(); }
+};
 export function registerPendingUploadCounter(counter) {
   pendingUploadCounter = counter;
 }

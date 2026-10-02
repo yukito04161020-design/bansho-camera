@@ -28,6 +28,11 @@ let generation = 0;
 let starting = false;
 let zoomApplying = false;
 let liveZoom = null;
+let captureBlocked = false;
+let operationActive = false;
+export function setCaptureBlocked(value) { captureBlocked = Boolean(value); updateVideoState(); }
+export function setCaptureOperationActive(value) { operationActive = Boolean(value); }
+export function cameraIsNavigating() { return updates.isNavigating(); }
 let range = null;
 let currentDeviceId = "";
 let currentName = "名前未取得";
@@ -143,7 +148,7 @@ function updateVideoState() {
   const track = stream?.getVideoTracks()[0];
   const ready = Boolean(!starting && !document.hidden && track && track.readyState === "live" && !track.muted &&
     !video.paused && video.readyState >= 2 && video.videoWidth > 0 && video.videoHeight > 0);
-  captureButton.disabled = !ready || zoomApplying;
+  captureButton.disabled = !ready || zoomApplying || captureBlocked;
   zoomSlider.disabled = !ready || !range || range.max <= range.min;
   video.classList.toggle("zoom-enabled", !zoomSlider.disabled);
   cameraSelect.disabled = starting || cameraSelect.options.length <= 1;
@@ -211,7 +216,7 @@ function cameraError(error) {
 }
 
 async function startCamera({ deviceId = cameraSelect.value, allowFallback = true } = {}) {
-  if (starting || stream || updates.isNavigating()) return;
+  if (starting || stream || document.hidden || updates.isNavigating()) return;
   if (!window.isSecureContext || !navigator.mediaDevices?.getUserMedia) {
     status.textContent = "カメラを使うには、HTTPSの公開URLをiPhoneのSafariで開いてください。";
     return;
@@ -301,6 +306,7 @@ for (const event of ["loadeddata", "playing", "resize", "pause", "waiting"]) {
 
 captureButton.addEventListener("click", () => {
   try {
+    const capturedAt = Date.now();
     const { width, height } = captureFrame(video, canvas);
     document.querySelector("#image-resolution").textContent = `撮影画像：${width} × ${height} px`;
     document.querySelector("#image-camera").textContent = `カメラ：${currentName}／${zoomStatus.textContent}`;
@@ -308,6 +314,7 @@ captureButton.addEventListener("click", () => {
     cameraScreen.hidden = true;
     imageScreen.hidden = false;
     sizeButton.focus();
+    document.dispatchEvent(new CustomEvent("bansho-captured", { detail: { capturedAt } }));
   } catch (error) {
     status.textContent = "画像を切り出せませんでした。映像が動いていることを確認して再試行してください。";
   }
@@ -320,7 +327,7 @@ sizeButton.addEventListener("click", () => {
   imageArea.scrollTo(0, 0);
 });
 
-document.querySelector("#back").addEventListener("click", () => {
+export function returnToCamera() {
   imageScreen.hidden = true;
   cameraScreen.hidden = false;
   canvas.width = 0;
@@ -330,7 +337,8 @@ document.querySelector("#back").addEventListener("click", () => {
   sizeButton.textContent = "等倍で確認";
   startButton.focus();
   void startCamera();
-});
+}
+document.querySelector("#back").addEventListener("click", returnToCamera);
 
 document.addEventListener("visibilitychange", () => {
   if (document.hidden) {
@@ -343,4 +351,5 @@ window.addEventListener("pagehide", stopCamera);
 const updates = initializeUpdates(() => ({
   cameraActive: starting || Boolean(stream),
   imagePreview: !imageScreen.hidden,
+  operationActive,
 }));
