@@ -1,0 +1,151 @@
+import { CropState, CropError, rectifyRows } from "./crop-logic.js";
+
+export function createCropEditor({ onChange }) {
+  const $ = (id) => document.getElementById(id);
+  const state = new CropState();
+  const buttons = [...document.querySelectorAll("[data-corner]")];
+  let selected = 0;
+  let drag = null;
+  let controller = null;
+  let showingResult = false;
+  let locked = false;
+  function lockControls() {
+    buttons.forEach((button) => { button.disabled = locked || state.busy; });
+    $("crop-preview").disabled = locked || !state.source || state.busy;
+    $("crop-reset").disabled = locked || !state.source || state.busy;
+    $("crop-edit").disabled = locked || !state.source || state.busy || !showingResult;
+    $("crop-nudge").disabled = locked || state.busy || !state.source || showingResult;
+    $("corner-selection").disabled = locked || state.busy || showingResult;
+  }
+
+  function render(message) {
+    buttons.forEach((button, index) => {
+      const point = state.corners?.[index];
+      if (point && state.source) {
+        button.style.left = `${point.x / (state.source.width - 1) * 100}%`;
+        button.style.top = `${point.y / (state.source.height - 1) * 100}%`;
+      }
+      button.disabled = state.busy;
+      button.setAttribute("aria-pressed", String(selected === index));
+    });
+    $("crop-outline").setAttribute("points", (state.corners || []).map((point) => `${point.x},${point.y}`).join(" "));
+    lockControls();
+    $("crop-cancel").hidden = !state.busy;
+    $("corner-selection").value = String(selected);
+    $("image-stage").hidden = showingResult;
+    $("cropped-image").hidden = !showingResult;
+    $("crop-hint").textContent = showingResult ? "保存される補正画像です。等倍で文字を確認できます。"
+      : "四隅の丸を板面に合わせて動かし、「補正して確認」を押してください。自動検出は準備中です。";
+    if (message) $("crop-status").textContent = message;
+    onChange();
+  }
+  function invalidate(points) {
+    state.change(points);
+    showingResult = false;
+    $("cropped-image").width = 0;
+    $("cropped-image").height = 0;
+    render("四隅を変更しました。もう一度補正して確認してください。");
+  }
+  function move(index, x, y) {
+    if (locked || !state.source || state.busy || showingResult) return;
+    const points = state.corners.map((point) => ({ ...point }));
+    points[index] = { x: Math.max(0, Math.min(state.source.width - 1, x)),
+      y: Math.max(0, Math.min(state.source.height - 1, y)) };
+    invalidate(points);
+  }
+  buttons.forEach((button, index) => {
+    button.addEventListener("pointerdown", (event) => {
+      if (locked || state.busy || !state.source || showingResult || event.button !== 0 || !event.isPrimary) return;
+      selected = index;
+      drag = { id: event.pointerId, index };
+      button.setPointerCapture(event.pointerId);
+      render();
+      event.preventDefault();
+    });
+    button.addEventListener("pointermove", (event) => {
+      if (!drag || drag.id !== event.pointerId) return;
+      const bounds = $("image").getBoundingClientRect();
+      if (!bounds.width || !bounds.height) return;
+      move(index, (event.clientX - bounds.left) / bounds.width * (state.source.width - 1),
+        (event.clientY - bounds.top) / bounds.height * (state.source.height - 1));
+    });
+    for (const event of ["pointerup", "pointercancel", "lostpointercapture"]) {
+      button.addEventListener(event, () => { drag = null; });
+    }
+    button.addEventListener("click", () => { selected = index; render(); });
+    button.addEventListener("keydown", (event) => {
+      const direction = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] }[event.key];
+      if (!direction || !state.source || state.busy || showingResult) return;
+      event.preventDefault();
+      selected = index;
+      const step = event.shiftKey ? 10 : 1;
+      const point = state.corners[index];
+      move(index, point.x + direction[0] * step, point.y + direction[1] * step);
+    });
+  });
+  $("corner-selection").addEventListener("change", () => { selected = Number($("corner-selection").value); render(); });
+  $("crop-nudge").addEventListener("click", () => {
+    const point = state.corners[selected];
+    move(selected, point.x + (state.source.width / 2 - point.x) * 0.1,
+      point.y + (state.source.height / 2 - point.y) * 0.1);
+  });
+  $("crop-reset").addEventListener("click", () => { state.reset(); invalidate(state.corners); render("画像全体の枠に戻しました。補正して確認してください。"); });
+  $("crop-edit").addEventListener("click", () => { showingResult = false; render("元画像で四隅を調整できます。変更後は再度補正してください。"); });
+  $("crop-cancel").addEventListener("click", () => { controller?.abort(); });
+  $("crop-preview").addEventListener("click", async () => {
+    if (locked || state.busy || !state.source) return;
+    controller = new AbortController();
+    const signal = controller.signal;
+    try {
+      await state.preview(async (source, plan) => {
+        render("補正しています。中断して四隅の調整に戻れます。");
+        const output = $("cropped-image");
+        try {
+          const pixels = source.getContext("2d").getImageData(0, 0, source.width, source.height);
+          output.width = plan.width;
+          output.height = plan.height;
+          const context = output.getContext("2d");
+          if (!context) throw new CropError("補正画像を準備できません。");
+          for (let row = 0; row < plan.height; row += 16) {
+            await new Promise((resolve) => window.setTimeout(resolve, 0));
+            if (signal.aborted || document.hidden) throw new CropError("補正を中断しました。画像を残しています。");
+            const count = Math.min(16, plan.height - row);
+            context.putImageData(new ImageData(rectifyRows(pixels, plan, row, count), plan.width, count), 0, row);
+          }
+          return output;
+        } catch (error) { output.width = 0; output.height = 0; throw error; }
+      });
+      showingResult = state.savable;
+      if (!showingResult) { render("補正を中断しました。"); return; }
+      render(`補正画像：${state.result.width} × ${state.result.height} px。確認して保存してください。`);
+    } catch (error) {
+      showingResult = false;
+      render(error instanceof CropError ? error.message : "補正できませんでした。画像は残っています。空き容量と四隅を確認し、再試行してください。");
+    } finally { controller = null; render(); }
+  });
+  document.addEventListener("visibilitychange", () => { if (document.hidden) controller?.abort(); });
+  window.addEventListener("pagehide", () => { controller?.abort(); });
+  return {
+    get busy() { return state.busy; },
+    get savable() { return state.savable && showingResult; },
+    get canvas() { return state.result; },
+    setLocked(value) { locked = Boolean(value); lockControls(); },
+    begin(source) {
+      state.begin(source);
+      selected = 0;
+      showingResult = false;
+      $("crop-overlay").setAttribute("viewBox", `0 0 ${source.width - 1} ${source.height - 1}`);
+      $("image-stage").style.setProperty("--source-width", `${source.width}px`);
+      render("画像全体を初期の枠にしています。板面の四隅を指定してください。");
+    },
+    clear() {
+      controller?.abort();
+      state.clear();
+      drag = null;
+      showingResult = false;
+      $("cropped-image").width = 0;
+      $("cropped-image").height = 0;
+      render();
+    },
+  };
+}

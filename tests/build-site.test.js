@@ -22,7 +22,7 @@ test("公開物に同じコミットの版情報とキャッシュ回避用URL�
       }
     }
     for (const file of ["home.js", "app-update.js", "camera-preview.js", "camera-options.js", "login-preview.js",
-      "capture-app.js", "capture-save.js", "drive-upload.js", "upload-store.js"]) {
+      "capture-app.js", "capture-save.js", "drive-upload.js", "upload-store.js", "crop-editor.js", "crop-logic.js"]) {
       const script = await readFile(join(outputDirectory, file), "utf8");
       for (const dependency of script.matchAll(/from ["']([^"']+)["']/g)) {
         assert.ok(dependency[1].endsWith(`?v=${revision}`), dependency[1]);
