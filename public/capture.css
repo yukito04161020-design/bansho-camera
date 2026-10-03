@@ -5,6 +5,16 @@
 #auth-status, .transfer, #save-status, #image-destination { font-size: 0.8rem; }
 .review-header { max-height: 55dvh; overflow-y: auto; flex: 0 0 auto; }
 #save-image { background: #216442; }
+#crop-hint, #crop-status { font-size: 0.8rem; }
+#image-area { padding: 24px; }
+#image-stage { position: relative; width: 100%; }
+#image-stage canvas, #cropped-image { width: 100%; height: auto; object-fit: fill; }
+.actual-size #image-stage { width: var(--source-width); }
+.actual-size #cropped-image { width: auto; height: auto; }
+#crop-overlay { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; overflow: visible; }
+#crop-outline { fill: rgb(255 218 120 / 10%); stroke: #ffda78; stroke-width: 3; vector-effect: non-scaling-stroke; }
+.crop-corner { position: absolute; transform: translate(-50%, -50%); width: 44px; height: 44px; padding: 0; border-radius: 50%; font-size: 0.75rem; background: #164e46; touch-action: none; }
+.crop-corner[aria-pressed="true"] { border: 3px solid #ffda78; }
 @media (orientation: landscape) and (max-height: 500px) {
   #save-options { max-height: 30dvh; }
   .review-header { max-height: 65dvh; }

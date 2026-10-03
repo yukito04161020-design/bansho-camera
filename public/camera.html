@@ -82,14 +82,34 @@
           <p class="version" data-update-status role="status"></p>
           <div class="buttons">
             <button id="actual-size" type="button" aria-pressed="false">等倍で確認</button>
+            <button id="crop-preview" type="button">補正して確認</button>
+            <button id="crop-edit" type="button" disabled>四隅の調整に戻る</button>
+            <button id="crop-reset" type="button">画像全体に戻す</button>
+            <button id="crop-cancel" type="button" hidden>補正を中断</button>
             <button id="save-image" type="button" disabled>保存して次の撮影</button>
             <button id="back" type="button">保存せず撮り直す</button>
           </div>
           <p id="save-status" role="status">確認したら保存してください。</p>
-          <p>等倍では上下左右にスクロールして、文字を確認できます。</p>
+          <p id="crop-hint">四隅を板面に合わせ、補正後の画像を確認して保存します。</p>
+          <p id="crop-status" role="status"></p>
+          <details>
+            <summary>四隅の位置を微調整</summary>
+            <label for="corner-selection">動かす隅</label>
+            <select id="corner-selection"><option value="0">左上</option><option value="1">右上</option><option value="2">右下</option><option value="3">左下</option></select>
+            <button id="crop-nudge" type="button">選んだ隅を少し内側へ</button>
+            <p>丸を選び、キーボードの矢印でも動かせます。</p>
+          </details>
         </header>
         <div id="image-area" class="image-area" tabindex="0" aria-label="撮影画像。等倍ではスクロールできます。">
-          <canvas id="image" aria-label="カメラ映像から切り出した画像"></canvas>
+          <div id="image-stage">
+            <canvas id="image" aria-label="カメラ映像から切り出した画像"></canvas>
+            <svg id="crop-overlay" aria-hidden="true" preserveAspectRatio="none"><polygon id="crop-outline"></polygon></svg>
+            <button type="button" class="crop-corner" data-corner="0" aria-label="左上の四隅調整">左上</button>
+            <button type="button" class="crop-corner" data-corner="1" aria-label="右上の四隅調整">右上</button>
+            <button type="button" class="crop-corner" data-corner="2" aria-label="右下の四隅調整">右下</button>
+            <button type="button" class="crop-corner" data-corner="3" aria-label="左下の四隅調整">左下</button>
+          </div>
+          <canvas id="cropped-image" aria-label="保存する補正後の画像" hidden></canvas>
         </div>
       </section>
     </main>
