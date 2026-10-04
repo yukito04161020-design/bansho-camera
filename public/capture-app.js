@@ -1,7 +1,7 @@
 import { config } from "./config.js";
 import { TokenSession, tokenClientOptions } from "./login-logic.js";
 import { classFolderName, FolderNameError } from "./folder-logic.js";
-import { captureDestination, captureSettings, saveCapturedImage } from "./capture-save.js";
+import { captureDestination, captureSettings, saveCapturedImage, createCapturedDraft } from "./capture-save.js";
 import { createDriveFolders, DriveFolderError } from "./drive-folders.js";
 import { createDriveUpload } from "./drive-upload.js";
 import { createUploadQueue } from "./upload-queue.js";
@@ -53,8 +53,8 @@ function render() {
     ? `授業：${destination.className}／${destination.sessionFolderName}`
     : `授業：${settings.selectedClass || "未選択"}／回：未確定。初回は保存先のオンライン確認が必要です。`)
     + (destinationMessage ? `（${destinationMessage}）` : "");
-  setCaptureBlocked(initializing || saving || !destination);
-  $("destination-status").setAttribute("aria-expanded", String($("save-options").open));
+  setCaptureBlocked(initializing ? "端末内保存を準備しています。" : saving ? "画像を保存しています。" : false);
+  $("destination-status").setAttribute("aria-expanded", String($("options-panel").open));
   const locked = initializing || saving || authorizing || folderLoading;
   $("apply-class").disabled = locked || !queue;
   $("class-name").disabled = locked;
@@ -66,7 +66,13 @@ function render() {
   $("auth-status").textContent = authMessage || (token.status === "valid"
     ? `Googleログイン済み（残り約${Math.ceil(token.remainingSeconds / 60)}分）`
     : "未ログインです。端末内の送信待ちはログイン後に送れます。");
-  $("save-image").disabled = saving || !captured || !queue || !crop.savable;
+  const fixed = captured?.resolve();
+  $("save-image").disabled = saving || !fixed || !queue || !crop.savable;
+  if (captured) {
+    $("image-destination").textContent = fixed
+      ? `保存先：板書／${fixed.className}／${fixed.sessionFolderName}`
+      : "保存前に「授業と保存先を選ぶ」から授業を選び、回を確認してください。画像は残っています。";
+  }
   $("back").disabled = saving || crop.busy;
   $("retry-upload").disabled = !queue || saving || authorizing || queueState.status === "sending";
   document.querySelectorAll("[data-pending-count]").forEach((node) => {
@@ -166,8 +172,14 @@ function authorize() {
   } catch { failed(); }
 }
 $("google-login").addEventListener("click", authorize);
-$("destination-status").addEventListener("click", () => { $("save-options").open = !$("save-options").open; render(); });
-$("save-options").addEventListener("toggle", () => { $("destination-status").setAttribute("aria-expanded", String($("save-options").open)); });
+function openOptions() {
+  $("save-options").open = true;
+  $("options-panel").showModal();
+  render();
+}
+for (const id of ["destination-status", "open-options", "review-options"]) $(id).addEventListener("click", openOptions);
+$("close-options").addEventListener("click", () => { $("options-panel").close(); });
+$("options-panel").addEventListener("close", render);
 $("cancel-login").addEventListener("click", () => {
   loginAttempt += 1;
   authorizing = false;
@@ -198,23 +210,20 @@ $("retry-upload").addEventListener("click", () => {
   } else void queue.retry();
 });
 document.addEventListener("bansho-captured", (event) => {
-  try {
-    captured = selection(event.detail.capturedAt);
-    $("image-destination").textContent = `保存先：板書／${captured.className}／${captured.sessionFolderName}`;
-    $("save-status").textContent = "確認したら保存してください。保存先は撮影時の授業と回です。";
-  } catch { captured = null; $("save-status").textContent = "保存先を確認できません。撮り直して授業と回を選択してください。"; }
+  captured = createCapturedDraft(event.detail.capturedAt, selection);
+  $("save-status").textContent = "補正画像と保存先を確認して保存してください。";
   crop.begin($("image"));
   render();
 });
 $("back").addEventListener("click", () => { captured = null; crop.clear(); render(); });
 $("save-image").addEventListener("click", async () => {
-  if (saving || !captured || !queue || !crop.savable || cameraIsNavigating()) return;
+  if (saving || !captured?.resolve() || !queue || !crop.savable || cameraIsNavigating()) return;
   saving = true;
   $("save-status").textContent = "撮影画像を端末内に保存しています。";
   render();
   try {
-    await saveCapturedImage({ canvas: crop.canvas, destination: captured, enqueue: (item) => queue.enqueue(item) });
-    pending.push({ className: captured.className, sessionFolderName: captured.sessionFolderName });
+    await saveCapturedImage({ canvas: crop.canvas, destination: captured.destination, enqueue: (item) => queue.enqueue(item) });
+    pending.push({ className: captured.destination.className, sessionFolderName: captured.destination.sessionFolderName });
     captured = null;
     crop.clear();
     storedMessage = "端末内に保存しました。ドライブへは前面で順に送ります。";

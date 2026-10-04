@@ -20,3 +20,24 @@
   .review-header { max-height: 65dvh; }
   #retry-upload { font-size: 0.75rem; min-height: 32px; padding: 0.25rem 0.6rem; }
 }
+/* 撮影中は映像全体を表示し、詳細操作は閉じられるシートへ集約する。 */
+#camera { touch-action: none; }
+#camera-screen .overlay { position: absolute; pointer-events: none; padding-top: 0.35rem; padding-bottom: 0.35rem; }
+#camera-screen .overlay button { pointer-events: auto; }
+#camera-screen .top { padding-top: max(0.35rem, env(safe-area-inset-top)); background: linear-gradient(rgb(0 0 0 / 65%), transparent); }
+#camera-screen .bottom { bottom: 0; padding-bottom: max(0.35rem, env(safe-area-inset-bottom)); background: linear-gradient(transparent, rgb(0 0 0 / 75%)); }
+#destination-status { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-height: 44px; }
+#camera-screen .buttons { margin: 0.25rem 0; display: inline-flex; }
+#capture { background: #216442; min-width: 5rem; }
+#capture-reason, #camera-screen .transfer { font-size: 0.8rem; }
+#options-panel { color: #fff; background: #101715; border: 1px solid #96ccba; border-radius: 1rem 1rem 0 0; width: min(100%, 38rem); max-height: 85dvh; margin: auto auto 0; padding: 1rem max(1rem, env(safe-area-inset-right)) max(1rem, env(safe-area-inset-bottom)) max(1rem, env(safe-area-inset-left)); overflow: auto; }
+#options-panel::backdrop { background: rgb(0 0 0 / 45%); }
+#options-panel details { max-height: none; overflow: visible; }
+#options-panel h2 { font-size: 1.1rem; }
+#close-options { position: sticky; top: 0; z-index: 1; }
+.review-header { max-height: 40dvh; }
+@media (orientation: landscape) {
+  .review { flex-direction: row; }
+  .review-header { width: 38%; max-height: 100%; min-height: 0; overflow: auto; padding-bottom: max(0.75rem, env(safe-area-inset-bottom)); }
+  .review .image-area { width: 62%; }
+}

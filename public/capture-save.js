@@ -21,6 +21,9 @@ export function captureSettings(input = {}) {
 }
 
 export async function saveCapturedImage({ canvas, destination, enqueue }) {
+  if (!destination?.className || !destination?.sessionFolderName) {
+    throw new Error("保存前に授業を選び、回と保存先を確認してください。画像は残っています。");
+  }
   const fixed = { className: destination.className, sessionFolderName: destination.sessionFolderName,
     capturedAt: destination.capturedAt };
   if (!canvas?.width || !canvas?.height || typeof enqueue !== "function") {
@@ -37,4 +40,27 @@ export async function saveCapturedImage({ canvas, destination, enqueue }) {
   });
   // enqueueがIndexedDBの保存完了を確認してから戻る。送信完了は待たない。
   return enqueue({ ...fixed, blob });
+}
+
+// 撮影日時を保持し、未確定の宛先だけを確認画面で決める。
+export function createCapturedDraft(capturedAt, resolveDestination) {
+  let destination = null;
+  const draft = { capturedAt, get destination() { return destination; },
+    resolve() {
+      if (!destination) {
+        try { destination = resolveDestination(capturedAt); } catch { /* 選択を待つ。 */ }
+      }
+      return destination;
+    } };
+  draft.resolve();
+  return draft;
+}
+
+export function captureDisabledReason({ starting, hidden, ready, zoomApplying, blocked }) {
+  if (blocked) return typeof blocked === "string" ? blocked : "撮影の準備中です。しばらくお待ちください。";
+  if (hidden) return "画面に戻ってカメラを開始してください。";
+  if (starting) return "カメラを準備しています。しばらくお待ちください。";
+  if (!ready) return "カメラを開始し、映像が動くまでお待ちください。";
+  if (zoomApplying) return "倍率を変更しています。反映後に撮影できます。";
+  return "";
 }
