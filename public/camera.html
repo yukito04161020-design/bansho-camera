@@ -19,55 +19,19 @@
       <section id="camera-screen" class="screen" aria-label="板書の撮影">
         <video id="camera" autoplay muted playsinline aria-label="背面カメラの映像"></video>
         <header class="overlay top">
-          <h1>板書を撮影</h1>
-          <button id="destination-status" type="button" aria-controls="save-options" aria-expanded="true">保存先を準備しています。</button>
-          <details id="save-options" open>
-            <summary>授業と保存先を変更</summary>
-            <p id="auth-status" role="status">Googleログインを準備しています。</p>
-            <div class="buttons">
-              <button id="google-login" type="button" disabled>Googleでログイン</button>
-              <button id="cancel-login" type="button" hidden>ログイン待ちを中断</button>
-            </div>
-            <label for="class-name">授業名（一覧から選ぶか入力）</label>
-            <input id="class-name" type="text" list="class-list" autocomplete="off">
-            <datalist id="class-list"></datalist>
-            <button id="apply-class" type="button" disabled>この授業を使う</button>
-            <label for="session-number">回数の手動変更（空欄なら自動）</label>
-            <input id="session-number" type="number" min="1" step="1" inputmode="numeric" placeholder="自動">
-            <button id="refresh-folders" type="button" disabled>ドライブの一覧を再取得</button>
-          </details>
-          <p id="resolution">映像：未取得</p>
-          <p id="request">要求：背面カメラ・高解像度</p>
-          <p id="camera-name">カメラ：未取得</p>
-          <details id="camera-options">
-            <summary>カメラ・ズームを選ぶ</summary>
-            <label for="camera-select">カメラ（背面を選択）</label>
-            <select id="camera-select" disabled>
-              <option value="">自動選択（背面）</option>
-            </select>
-            <p id="devices-status">カメラを開始すると、許可後の一覧を取得します。</p>
-            <label for="zoom">ズーム</label>
-            <input id="zoom" type="range" min="1" max="1" step="1" value="1" disabled>
-          </details>
+
+          <button id="destination-status" type="button" aria-controls="options-panel" aria-expanded="false">保存先を準備しています。</button>
           <p id="zoom-status">倍率：カメラ開始後に確認します。</p>
-          <p class="note">映像を2本の指で広げると拡大、狭めると縮小できます（ズーム対応時）。</p>
-          <p id="preference-status" role="status"></p>
-          <p class="version">版：<span data-app-version>開発版</span></p>
-          <p class="version" data-update-status role="status"></p>
         </header>
         <div class="overlay bottom">
-          <p id="status" role="status">「カメラを開始」を押し、カメラの使用を許可してください。</p>
-          <p id="wake-status"></p>
+          <p id="capture-reason" role="status"></p>
           <div class="buttons">
             <button id="start" type="button">カメラを開始</button>
-            <button id="capture" type="button" disabled>撮影</button>
-            <button id="stop" type="button" disabled>停止</button>
+            <button id="capture" aria-describedby="capture-reason" type="button" disabled>撮影</button>
           </div>
-          <p class="note">確認画面の「保存」で端末内に残し、前面でドライブへ送ります。</p>
+
           <p class="transfer" data-pending-count>送信待ち：確認中</p>
-          <p class="transfer" data-transfer-status role="status"></p>
-          <button id="retry-upload" type="button" disabled>送信を再開する</button>
-          <a href="./">ホームに戻る</a>
+          <button id="open-options" type="button" aria-controls="options-panel">設定を開く</button>
         </div>
       </section>
       <section id="image-screen" class="screen review" aria-label="撮影画像の確認" hidden>
@@ -86,6 +50,7 @@
             <button id="crop-edit" type="button" disabled>四隅の調整に戻る</button>
             <button id="crop-reset" type="button">画像全体に戻す</button>
             <button id="crop-cancel" type="button" hidden>補正を中断</button>
+            <button id="review-options" type="button" aria-controls="options-panel">授業と保存先を選ぶ</button>
             <button id="save-image" type="button" disabled>保存して次の撮影</button>
             <button id="back" type="button">保存せず撮り直す</button>
           </div>
@@ -113,6 +78,48 @@
         </div>
       </section>
     </main>
+    <dialog id="options-panel" aria-labelledby="options-title">
+      <h2 id="options-title">授業・保存先とカメラ設定</h2>
+      <button id="close-options" type="button">設定を閉じる</button>
+          <details id="save-options">
+            <summary>授業と保存先を変更</summary>
+            <p id="auth-status" role="status">Googleログインを準備しています。</p>
+            <div class="buttons">
+              <button id="google-login" type="button" disabled>Googleでログイン</button>
+              <button id="cancel-login" type="button" hidden>ログイン待ちを中断</button>
+            </div>
+            <label for="class-name">授業名（一覧から選ぶか入力）</label>
+            <input id="class-name" type="text" list="class-list" autocomplete="off">
+            <datalist id="class-list"></datalist>
+            <button id="apply-class" type="button" disabled>この授業を使う</button>
+            <label for="session-number">回数の手動変更（空欄なら自動）</label>
+            <input id="session-number" type="number" min="1" step="1" inputmode="numeric" placeholder="自動">
+            <button id="refresh-folders" type="button" disabled>ドライブの一覧を再取得</button>
+          </details>
+          <p id="resolution">映像：未取得</p>
+          <p id="request">要求：背面カメラ・高解像度</p>
+          <p id="camera-name">カメラ：未取得</p>
+          <details id="camera-options">
+            <summary>カメラ・ズームを選ぶ</summary>
+            <label for="camera-select">カメラ（背面を選択）</label>
+            <select id="camera-select" disabled>
+              <option value="">自動選択（背面）</option>
+            </select>
+            <p id="devices-status">カメラを開始すると、許可後の一覧を取得します。</p>
+            <label for="zoom">ズーム</label>
+            <input id="zoom" type="range" min="1" max="1" step="1" value="1" disabled>
+          </details>
+          <p class="note">映像を2本の指で広げると拡大、狭めると縮小できます（ズーム対応時）。</p>
+          <p id="preference-status" role="status"></p>
+          <p class="version">版：<span data-app-version>開発版</span></p>
+          <p class="version" data-update-status role="status"></p>
+      <p id="status" role="status">「カメラを開始」を押し、カメラの使用を許可してください。</p>
+      <button id="stop" type="button" disabled>カメラを停止</button>
+      <p class="transfer" data-transfer-status role="status"></p>
+      <p id="wake-status"></p>
+      <button id="retry-upload" type="button" disabled>送信を再開する</button>
+      <a href="./">ホームに戻る</a>
+    </dialog>
     <noscript>撮影にはJavaScriptを有効にしてください。</noscript>
   </body>
 </html>

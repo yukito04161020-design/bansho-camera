@@ -97,3 +97,36 @@ test("撮影画面を離れても起動時の更新判定はIndexedDBの未送�
     else globalThis.indexedDB = previous;
   }
 });
+
+test("授業未選択で撮影した画像を残し、選択するまで保存せず、撮影日時で宛先を確定する", async () => {
+  const { createCapturedDraft } = await import("../public/capture-save.js");
+  let selected = false;
+  const draft = createCapturedDraft(destination.capturedAt, (capturedAt) => {
+    if (!selected) throw new Error("授業未選択");
+    return captureDestination({ className: "数学", existingNames: ["第01回_2026-10-01"], capturedAt });
+  });
+  const canvas = { width: 1920, height: 1080, toBlob: (callback) => callback(blob) };
+  assert.equal(draft.destination, null);
+  await assert.rejects(saveCapturedImage({ canvas, destination: draft.resolve(), enqueue: () => assert.fail("未選択では保存しない") }), /保存前に授業/);
+  assert.equal(canvas.width, 1920);
+  assert.equal(canvas.height, 1080);
+  selected = true;
+  assert.deepEqual(draft.resolve(), destination);
+  let item;
+  await saveCapturedImage({ canvas, destination: draft.destination, enqueue: (value) => { item = value; } });
+  assert.deepEqual(item, { ...destination, blob });
+  selected = false;
+  assert.equal(draft.resolve(), null);
+  const fixed = createCapturedDraft(destination.capturedAt, () => ({ ...destination }));
+  assert.deepEqual(fixed.resolve(), destination);
+});
+
+test("撮影不可のすべての状態に日本語の理由を返し、撮影可能なら空にする", async () => {
+  const { captureDisabledReason } = await import("../public/capture-save.js");
+  const ready = { ready: true };
+  assert.equal(captureDisabledReason(ready), "");
+  for (const state of [{ starting: true }, { hidden: true }, { ready: false }, { zoomApplying: true }, { blocked: true }]) {
+    assert.match(captureDisabledReason({ ...ready, ...state }), /[ぁ-んァ-ヶ一-龠]/);
+  }
+  assert.equal(captureDisabledReason({ ...ready, blocked: "画像を保存しています。" }), "画像を保存しています。");
+});

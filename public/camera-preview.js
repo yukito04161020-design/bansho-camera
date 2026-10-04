@@ -1,3 +1,4 @@
+import { captureDisabledReason } from "./capture-save.js";
 import { captureFrame } from "./camera-logic.js";
 import { applyTrackZoom, cameraOptions, normalizeZoom, openSelectedCamera, readCameraPreference, writeCameraPreference, zoomRange } from "./camera-options.js";
 import { initializeUpdates } from "./app-update.js";
@@ -30,7 +31,7 @@ let zoomApplying = false;
 let liveZoom = null;
 let captureBlocked = false;
 let operationActive = false;
-export function setCaptureBlocked(value) { captureBlocked = Boolean(value); updateVideoState(); }
+export function setCaptureBlocked(value) { captureBlocked = value; updateVideoState(); }
 export function setCaptureOperationActive(value) { operationActive = Boolean(value); }
 export function cameraIsNavigating() { return updates.isNavigating(); }
 let range = null;
@@ -148,7 +149,10 @@ function updateVideoState() {
   const track = stream?.getVideoTracks()[0];
   const ready = Boolean(!starting && !document.hidden && track && track.readyState === "live" && !track.muted &&
     !video.paused && video.readyState >= 2 && video.videoWidth > 0 && video.videoHeight > 0);
-  captureButton.disabled = !ready || zoomApplying || captureBlocked;
+  const reason = captureDisabledReason({ starting, hidden: document.hidden, ready, zoomApplying, blocked: captureBlocked });
+  captureButton.disabled = Boolean(reason);
+  const explanation = document.querySelector("#capture-reason");
+  if (explanation) { explanation.textContent = reason; explanation.hidden = !reason; }
   zoomSlider.disabled = !ready || !range || range.max <= range.min;
   video.classList.toggle("zoom-enabled", !zoomSlider.disabled);
   cameraSelect.disabled = starting || cameraSelect.options.length <= 1;
@@ -192,7 +196,7 @@ function stopCamera() {
   zoomApplying = false;
   zoomSlider.disabled = true;
   video.srcObject = null;
-  captureButton.disabled = true;
+  updateVideoState();
   stopButton.disabled = true;
   startButton.disabled = starting;
   cameraSelect.disabled = starting || cameraSelect.options.length <= 1;
@@ -222,6 +226,7 @@ async function startCamera({ deviceId = cameraSelect.value, allowFallback = true
     return;
   }
   starting = true;
+  updateVideoState();
   cameraSelect.disabled = true;
   zoomSlider.disabled = true;
   startButton.disabled = true;
@@ -284,6 +289,13 @@ cameraSelect.addEventListener("change", () => {
   void startCamera({ deviceId, allowFallback: false });
 });
 zoomSlider.addEventListener("input", () => { liveZoom?.request(Number(zoomSlider.value)); });
+// iOS Safariの独自ジェスチャーも映像内だけで抑止する。
+for (const type of ["gesturestart", "gesturechange", "gestureend"]) {
+  video.addEventListener(type, (event) => { event.preventDefault(); }, { passive: false });
+}
+video.addEventListener("touchmove", (event) => {
+  if (event.touches.length > 1) event.preventDefault();
+}, { passive: false });
 const pinch = createPinchZoom({ readZoom: () => Number(zoomSlider.value), onZoom: (value) => liveZoom?.request(value) });
 video.addEventListener("pointerdown", (event) => {
   if (event.pointerType !== "touch" || zoomSlider.disabled || !liveZoom) return;
