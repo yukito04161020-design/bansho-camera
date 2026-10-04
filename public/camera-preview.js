@@ -1,3 +1,4 @@
+import { discoverCameras, chooseCamera, readChoices, rememberChoice, compareCameras, setCameraMagnification } from "./auto-camera.js";
 import { captureDisabledReason } from "./capture-save.js";
 import { captureFrame } from "./camera-logic.js";
 import { applyTrackZoom, cameraOptions, normalizeZoom, openSelectedCamera, readCameraPreference, writeCameraPreference, zoomRange } from "./camera-options.js";
@@ -23,6 +24,11 @@ const devicesStatus = document.querySelector("#devices-status");
 const zoomSlider = document.querySelector("#zoom");
 const zoomStatus = document.querySelector("#zoom-status");
 const preferenceStatus = document.querySelector("#preference-status");
+const automaticCamera = !cameraSelect;
+let automaticCandidates = null;
+let selectedAutomatic = null;
+let requestedMagnification = null;
+let cancelComparison = null;
 let stream = null;
 let wakeLock = null;
 let generation = 0;
@@ -41,7 +47,7 @@ let currentZoom = null;
 let storage;
 try { storage = window.localStorage; } catch { /* 保存不可でも検証を続ける。 */ }
 let preference = readCameraPreference(storage);
-if (preference.deviceId) {
+if (cameraSelect && preference.deviceId) {
   const option = document.createElement("option");
   option.value = preference.deviceId;
   option.textContent = "前回のカメラ（開始後に名前を取得）";
@@ -50,14 +56,14 @@ if (preference.deviceId) {
 }
 
 function rememberCamera() {
-  preference = { deviceId: currentDeviceId, zoom: currentZoom };
+  preference = { deviceId: currentDeviceId, zoom: automaticCamera ? requestedMagnification : currentZoom };
   preferenceStatus.textContent = writeCameraPreference(storage, preference)
-    ? "" : "設定を記憶できません。この画面では引き続き検証できます。";
+    ? preferenceStatus.textContent : "設定を記憶できません。この画面では引き続き利用できます。";
 }
 
 function showZoom(result, settled = true) {
   currentZoom = result.actual ?? result.requested;
-  if (settled) zoomSlider.value = normalizeZoom(currentZoom, range);
+  if (settled) zoomSlider.value = normalizeZoom(automaticCamera ? requestedMagnification : currentZoom, range);
   zoomStatus.textContent = result.actual === null
     ? `倍率：取得できません（指定 ${result.requested}×）`
     : `倍率：${result.actual}×${Math.abs(result.actual - result.requested) > range.step / 2 ? `（指定 ${result.requested}×は反映されませんでした）` : ""}`;
@@ -65,6 +71,7 @@ function showZoom(result, settled = true) {
 }
 
 async function refreshCameraList(track, current) {
+  if (automaticCamera) return;
   try {
     const devices = cameraOptions(await navigator.mediaDevices.enumerateDevices());
     if (current !== generation) return;
@@ -94,6 +101,31 @@ async function refreshCameraList(track, current) {
 }
 
 async function configureZoom(track, current) {
+  if (automaticCamera) {
+    range = selectedAutomatic.virtual && selectedAutomatic.range?.max > selectedAutomatic.range?.min
+      ? selectedAutomatic.range : { min: 0.5, max: Math.max(10, ...automaticCandidates.map((camera) => (camera.base ?? 1) * (camera.range?.max ?? 1))), step: 0.1 };
+    zoomSlider.min = range.min; zoomSlider.max = range.max; zoomSlider.step = range.step;
+    const result = await setCameraMagnification(track, selectedAutomatic, requestedMagnification);
+    if (current !== generation) return;
+    showZoom(result);
+    liveZoom = createLiveZoom({ range, initialZoom: requestedMagnification,
+      applyZoom: async (value) => {
+        requestedMagnification = value;
+        const decision = chooseCamera(automaticCandidates, value, readChoices(storage));
+        if (!decision.selected || decision.selected.deviceId !== currentDeviceId) {
+          stopCamera();
+          void startCamera();
+          return { requested: value, actual: null };
+        }
+        return setCameraMagnification(track, selectedAutomatic, value);
+      },
+      onRequested: (value) => { zoomSlider.value = value; },
+      onApplied: (result, { settled }) => { showZoom(result, settled); if (settled) rememberCamera(); },
+      onError: () => { zoomStatus.textContent = "倍率の変更に失敗しました。再試行してください。"; },
+      onBusy: (value) => { zoomApplying = value; updateVideoState(); },
+    });
+    return;
+  }
   let capabilities = {};
   try { capabilities = track.getCapabilities?.() || {}; } catch { /* 非対応として案内する。 */ }
   range = zoomRange(capabilities);
@@ -155,7 +187,7 @@ function updateVideoState() {
   if (explanation) { explanation.textContent = reason; explanation.hidden = !reason; }
   zoomSlider.disabled = !ready || !range || range.max <= range.min;
   video.classList.toggle("zoom-enabled", !zoomSlider.disabled);
-  cameraSelect.disabled = starting || cameraSelect.options.length <= 1;
+  if (cameraSelect) cameraSelect.disabled = starting || cameraSelect.options.length <= 1;
   if (ready) resolution.textContent = `映像：${video.videoWidth} × ${video.videoHeight} px`;
 }
 
@@ -187,6 +219,7 @@ async function keepScreenOn() {
 
 function stopCamera() {
   generation += 1;
+  cancelComparison?.();
   liveZoom?.dispose();
   liveZoom = null;
   pinch.reset();
@@ -199,7 +232,7 @@ function stopCamera() {
   updateVideoState();
   stopButton.disabled = true;
   startButton.disabled = starting;
-  cameraSelect.disabled = starting || cameraSelect.options.length <= 1;
+  if (cameraSelect) cameraSelect.disabled = starting || cameraSelect.options.length <= 1;
   if (wakeLock) {
     const lock = wakeLock;
     wakeLock = null;
@@ -213,13 +246,13 @@ function cameraError(error) {
     return "カメラを使用できません。SafariまたはiPhoneの設定で、このサイトのカメラを許可してから再試行してください。";
   }
   if (error.name === "NotFoundError" || error.name === "OverconstrainedError") {
-    return "背面カメラを取得できません。iPhoneのSafariで、別の背面カメラか「自動選択（背面）」を選んで再試行してください。";
+    return "背面カメラを取得できません。カメラを再開して再試行してください。";
   }
   if (error.name === "NotReadableError") return "カメラを使用できません。他のカメラアプリを閉じてから再試行してください。";
   return "カメラを開始できませんでした。ページを開き直して再試行してください。";
 }
 
-async function startCamera({ deviceId = cameraSelect.value, allowFallback = true } = {}) {
+async function startCamera({ deviceId = cameraSelect?.value || "", allowFallback = true } = {}) {
   if (starting || stream || document.hidden || updates.isNavigating()) return;
   if (!window.isSecureContext || !navigator.mediaDevices?.getUserMedia) {
     status.textContent = "カメラを使うには、HTTPSの公開URLをiPhoneのSafariで開いてください。";
@@ -227,14 +260,70 @@ async function startCamera({ deviceId = cameraSelect.value, allowFallback = true
   }
   starting = true;
   updateVideoState();
-  cameraSelect.disabled = true;
+  if (cameraSelect) cameraSelect.disabled = true;
   zoomSlider.disabled = true;
   startButton.disabled = true;
   status.textContent = "カメラを準備しています。許可の確認が表示されたら許可してください。";
   resolution.textContent = "映像：準備中";
   const current = ++generation;
   try {
-    const camera = await openSelectedCamera(navigator.mediaDevices, deviceId, allowFallback);
+    if (automaticCamera) {
+      requestedMagnification ??= preference.zoom ?? 1;
+      const active = () => current === generation && !document.hidden;
+      automaticCandidates ||= await discoverCameras(navigator.mediaDevices, active);
+      const decision = chooseCamera(automaticCandidates, requestedMagnification, readChoices(storage));
+      selectedAutomatic = decision.selected;
+      if (!selectedAutomatic) {
+        status.textContent = "見やすいカメラを撮り比べています。板面に向けたままお待ちください。";
+        selectedAutomatic = await compareCameras(decision.candidates, {
+          active,
+          open: (candidate) => openSelectedCamera(navigator.mediaDevices, candidate.deviceId, false),
+          capture: async (opened, candidate) => {
+            await setCameraMagnification(opened.stream.getVideoTracks()[0], candidate, requestedMagnification);
+            video.srcObject = null;
+            video.load();
+            video.srcObject = opened.stream;
+            await video.play();
+            await new Promise((resolve, reject) => {
+              const deadline = performance.now() + 5000;
+              function wait() {
+                if (!active()) return reject(new Error("中断"));
+                if (video.readyState >= 2 && video.videoWidth > 0) return resolve();
+                if (performance.now() > deadline) return reject(new Error("映像待ち時間超過"));
+                setTimeout(wait, 50);
+              }
+              setTimeout(wait, 200);
+            });
+            const sample = document.createElement("canvas");
+            captureFrame(video, sample);
+            return sample;
+          },
+          choose: (samples) => new Promise((resolve) => {
+            const dialog = document.querySelector("#camera-comparison");
+            const list = document.querySelector("#comparison-images");
+            list.replaceChildren();
+            const finish = (camera) => {
+              cancelComparison = null;
+              dialog.close(); list.replaceChildren(); resolve(camera);
+            };
+            cancelComparison = () => finish(null);
+            dialog.oncancel = (event) => { event.preventDefault(); finish(null); };
+            for (const { camera, image } of samples) {
+              const card = document.createElement("div");
+              const button = document.createElement("button");
+              button.textContent = `${camera.label}を使う`;
+              button.onclick = () => finish(camera);
+              card.append(image, button); list.append(card);
+            }
+            if (active()) dialog.showModal(); else finish(null);
+          }),
+        });
+        if (!rememberChoice(storage, decision.key, selectedAutomatic.deviceId)) preferenceStatus.textContent = "カメラの選択を記憶できません。次回は再度撮り比べます。";
+      }
+      if (!active()) return;
+      deviceId = selectedAutomatic.deviceId;
+    }
+    const camera = await openSelectedCamera(navigator.mediaDevices, deviceId, automaticCamera ? false : allowFallback);
     if (current !== generation || document.hidden) {
       camera.stream.getTracks().forEach((track) => track.stop());
       return;
@@ -272,6 +361,7 @@ async function startCamera({ deviceId = cameraSelect.value, allowFallback = true
   } catch (error) {
     if (current === generation) {
       stopCamera();
+      if (automaticCamera) automaticCandidates = null;
       status.textContent = cameraError(error);
       resolution.textContent = "映像：未取得";
     }
@@ -283,8 +373,8 @@ async function startCamera({ deviceId = cameraSelect.value, allowFallback = true
 }
 
 startButton.addEventListener("click", () => { void startCamera(); });
-cameraSelect.addEventListener("change", () => {
-  const deviceId = cameraSelect.value;
+cameraSelect?.addEventListener("change", () => {
+  const deviceId = cameraSelect?.value || "";
   stopCamera();
   void startCamera({ deviceId, allowFallback: false });
 });
