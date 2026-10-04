@@ -158,6 +158,10 @@ export async function createUploadQueue({
     count: () => store.count(),
     readCaptureSettings: () => store.readCaptureSettings(),
     writeCaptureSettings: (value) => store.writeCaptureSettings(value),
+    readManualLesson: () => store.readManualLesson(),
+    writeManualLesson: (value) => store.writeManualLesson(value),
+    readTimetable: () => store.readTimetable(),
+    writeTimetable: (value) => store.writeTimetable(value),
     pendingDestinations: () => store.pendingDestinations(),
     snapshot: () => ({ ...state }),
     subscribe(subscriber) {

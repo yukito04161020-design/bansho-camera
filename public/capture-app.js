@@ -1,6 +1,10 @@
+import { selectLesson, manualLesson } from "./timetable-logic.js";
+import { createTimetableSync } from "./timetable-sync.js";
+import { createDriveTimetable } from "./drive-timetable.js";
+import { createTimetableEditor } from "./timetable-editor.js";
 import { config } from "./config.js";
 import { TokenSession, tokenClientOptions } from "./login-logic.js";
-import { classFolderName, FolderNameError } from "./folder-logic.js";
+import { classFolderName, FolderNameError, japanDate } from "./folder-logic.js";
 import { captureDestination, captureSettings, saveCapturedImage, createCapturedDraft } from "./capture-save.js";
 import { createDriveFolders, DriveFolderError } from "./drive-folders.js";
 import { createDriveUpload } from "./drive-upload.js";
@@ -28,6 +32,13 @@ let loginAttempt = 0;
 let authMessage = "";
 let destinationMessage = "";
 let storedMessage = "";
+let timetable = null;
+let timetableSync;
+let timetableBusy = false;
+let timetableController;
+let manualSelection = null;
+let automaticKey;
+const timetableEditor = createTimetableEditor({ save: (entries) => updateTimetable(entries) });
 const crop = createCropEditor({ onChange: render });
 
 function namesFor(className) {
@@ -42,20 +53,68 @@ function selection(capturedAt = Date.now()) {
   const manualSession = text === "" ? undefined : /^\d+$/.test(text) ? Number(text) : NaN;
   return captureDestination({ className: settings.selectedClass, existingNames, capturedAt, manualSession });
 }
+// 判定が変わったときだけ選択を更新し、時間割外の手動選択を毎秒消さない。
+function applyTimetable(capturedAt = Date.now(), force = false) {
+  if (!queue || initializing || captured || saving) return;
+  const result = selectLesson(timetable?.entries || [], capturedAt, manualSelection);
+  const key = `${japanDate(capturedAt)}:${result.lesson?.key || "未判定"}:${result.className}`;
+  if (!force && key === automaticKey) return;
+  automaticKey = key;
+  if (!result.manual) manualSelection = null;
+  if (settings.selectedClass === result.className) return;
+  settings.selectedClass = result.className;
+  $("class-name").value = result.className;
+  $("session-number").value = "";
+  destinationMessage = "";
+  if (result.className && !settings.classes.includes(result.className)) settings.classes.push(result.className);
+  showClasses();
+  void remember();
+  if (result.className && session.snapshot().status === "valid" && navigator.onLine !== false && !document.hidden) {
+    void readFolders(result.className);
+  }
+}
+async function updateTimetable(entries) {
+  if (!timetableSync || timetableBusy) return false;
+  timetableBusy = true;
+  timetableEditor.setBusy(true);
+  render();
+  timetableController = new AbortController();
+  controllers.add(timetableController);
+  let success = false;
+  try {
+    timetable = entries === undefined ? await timetableSync.load() : await timetableSync.save(entries);
+    success = true;
+    $("timetable-status").textContent = session.snapshot().status === "valid" && navigator.onLine !== false && !document.hidden
+      ? "時間割をドライブと同期しました。" : "端末内の時間割を使います。次のログイン・通信復帰時に同期します。";
+  } catch {
+    try { timetable = await queue.readTimetable(); success = entries !== undefined
+      && JSON.stringify(timetable?.entries) === JSON.stringify(entries); }
+    catch { success = false; }
+    $("timetable-status").textContent = "時間割を同期できません。端末内の内容を保持しています。Googleログインと通信を確認してください。";
+  } finally {
+    controllers.delete(timetableController);
+    timetableBusy = false;
+    timetableEditor.setRecord(timetable);
+    timetableEditor.setBusy(false);
+    applyTimetable();
+    render();
+  }
+  return success;
+}
 function render() {
   const token = session.snapshot();
   crop.setLocked(saving);
   $("actual-size").disabled = saving || crop.busy;
-  setCaptureOperationActive(initializing || saving || crop.busy || authorizing || folderLoading || token.status === "valid");
+  setCaptureOperationActive(initializing || saving || crop.busy || authorizing || folderLoading || timetableBusy || token.status === "valid");
   let destination = null;
   try { destination = selection(captured?.capturedAt); } catch { /* 未確認や入力不正は撮影前に案内する。 */ }
   $("destination-status").textContent = (destination
     ? `授業：${destination.className}／${destination.sessionFolderName}`
-    : `授業：${settings.selectedClass || "未選択"}／回：未確定。初回は保存先のオンライン確認が必要です。`)
+    : `授業：${settings.selectedClass || "未判定"}／回：未確定。初回は保存先のオンライン確認が必要です。`)
     + (destinationMessage ? `（${destinationMessage}）` : "");
   setCaptureBlocked(initializing ? "端末内保存を準備しています。" : saving ? "画像を保存しています。" : false);
   $("destination-status").setAttribute("aria-expanded", String($("options-panel").open));
-  const locked = initializing || saving || authorizing || folderLoading;
+  const locked = initializing || saving || authorizing || folderLoading || timetableBusy;
   $("apply-class").disabled = locked || !queue;
   $("class-name").disabled = locked;
   $("session-number").disabled = locked;
@@ -166,6 +225,7 @@ function authorize() {
       authMessage = "";
       render();
       void queue.resumeAfterAuthentication().catch(() => { storedMessage = "送信を再開できません。端末内の画像は残っています。"; render(); });
+      void updateTimetable();
       void refreshClasses();
     }, failed));
     client.requestAccessToken({ prompt: session.snapshot().status === "valid" ? "select_account" : "" });
@@ -189,8 +249,11 @@ $("cancel-login").addEventListener("click", () => {
 $("apply-class").addEventListener("click", async () => {
   try { settings.selectedClass = classFolderName($("class-name").value); }
   catch { destinationMessage = "授業名は空白だけ・前後の空白・区切り文字を含めず入力してください。"; render(); return; }
-  $("session-number").value = "";
   destinationMessage = "";
+  manualSelection = manualLesson(timetable?.entries || [], captured?.capturedAt || Date.now(), settings.selectedClass);
+  try { await queue.writeManualLesson(manualSelection); }
+  catch { destinationMessage = "手動選択を記憶できません。この画面では選択できます。"; }
+  $("session-number").value = "";
   render();
   if (session.snapshot().status === "valid" && navigator.onLine !== false) await readFolders(settings.selectedClass);
   await remember();
@@ -210,6 +273,7 @@ $("retry-upload").addEventListener("click", () => {
   } else void queue.retry();
 });
 document.addEventListener("bansho-captured", (event) => {
+  applyTimetable(event.detail.capturedAt);
   captured = createCapturedDraft(event.detail.capturedAt, selection);
   $("save-status").textContent = "補正画像と保存先を確認して保存してください。";
   crop.begin($("image"));
@@ -247,6 +311,14 @@ async function initialize() {
       finally { controllers.delete(controller); }
     } });
     settings = await queue.readCaptureSettings();
+    timetableSync = createTimetableSync({ store: queue,
+      drive: createDriveTimetable({ session, folders, signal: () => timetableController?.signal }),
+      canSync: () => !document.hidden && navigator.onLine !== false && session.snapshot().status === "valid" });
+    timetable = await queue.readTimetable();
+    manualSelection = await queue.readManualLesson();
+    timetableEditor.setRecord(timetable);
+    timetableEditor.setBusy(false);
+    $("timetable-status").textContent = "端末内の時間割を使います。ログイン後にドライブと同期します。";
     pending = await queue.pendingDestinations();
     $("class-name").value = settings.selectedClass;
     showClasses();
@@ -259,11 +331,12 @@ async function initialize() {
     });
   } catch { storedMessage = "端末内保存を準備できません。空き容量やブラウザの設定を確認して開き直してください。"; }
   initializing = false;
+  applyTimetable(Date.now(), true);
   render();
 }
 document.addEventListener("visibilitychange", () => {
   if (document.hidden) { controllers.forEach((controller) => controller.abort()); listing += 1; folderLoading = false; }
-  else render();
+  else { applyTimetable(); render(); void updateTimetable(); }
 });
 window.addEventListener("pagehide", () => {
   controllers.forEach((controller) => controller.abort());
@@ -274,8 +347,9 @@ window.addEventListener("pagehide", () => {
   folderLoading = false;
   render();
 });
-window.addEventListener("pageshow", () => { render(); });
-window.setInterval(() => { if (!document.hidden) render(); }, 1000);
+window.addEventListener("pageshow", () => { applyTimetable(); render(); void updateTimetable(); });
+window.addEventListener("online", () => { void updateTimetable(); });
+window.setInterval(() => { if (!document.hidden) { applyTimetable(); render(); } }, 1000);
 void initialize();
 
 if (config.googleClientId) {

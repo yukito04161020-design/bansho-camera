@@ -45,3 +45,8 @@
 #camera-comparison { background: #101715; color: white; width: 95vw; max-height: 85dvh; overflow: auto; }
 #comparison-images { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 0.75rem; }
 #comparison-images canvas { width: 100%; height: auto; }
+#timetable-panel { border-top: 1px solid #96ccba; margin-top: 1rem; }
+#timetable-form label { display: block; margin-top: 0.5rem; }
+#timetable-form input, #timetable-form select { width: 100%; min-height: 44px; font: inherit; margin: 0.25rem 0; }
+#timetable-list { padding-left: 1.2rem; overflow-wrap: anywhere; }
+#timetable-list button { margin: 0 0.4rem 0.4rem 0; }
