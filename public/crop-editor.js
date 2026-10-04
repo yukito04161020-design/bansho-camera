@@ -1,3 +1,4 @@
+import { detectCorners, detectionSize } from "./corner-detect.js";
 import { CropState, CropError, rectifyRows } from "./crop-logic.js";
 
 export function createCropEditor({ onChange }) {
@@ -9,13 +10,15 @@ export function createCropEditor({ onChange }) {
   let controller = null;
   let showingResult = false;
   let locked = false;
+  let detecting = false;
+  let generation = 0;
   function lockControls() {
-    buttons.forEach((button) => { button.disabled = locked || state.busy; });
-    $("crop-preview").disabled = locked || !state.source || state.busy;
-    $("crop-reset").disabled = locked || !state.source || state.busy;
-    $("crop-edit").disabled = locked || !state.source || state.busy || !showingResult;
-    $("crop-nudge").disabled = locked || state.busy || !state.source || showingResult;
-    $("corner-selection").disabled = locked || state.busy || showingResult;
+    buttons.forEach((button) => { button.disabled = locked || state.busy || detecting; });
+    $("crop-preview").disabled = locked || !state.source || state.busy || detecting;
+    $("crop-reset").disabled = locked || !state.source || state.busy || detecting;
+    $("crop-edit").disabled = locked || !state.source || state.busy || detecting || !showingResult;
+    $("crop-nudge").disabled = locked || state.busy || detecting || !state.source || showingResult;
+    $("corner-selection").disabled = locked || state.busy || detecting || showingResult;
   }
 
   function render(message) {
@@ -30,12 +33,13 @@ export function createCropEditor({ onChange }) {
     });
     $("crop-outline").setAttribute("points", (state.corners || []).map((point) => `${point.x},${point.y}`).join(" "));
     lockControls();
-    $("crop-cancel").hidden = !state.busy;
+    $("crop-cancel").hidden = !(state.busy || detecting);
+    $("crop-cancel").textContent = detecting ? "検出を中断" : "補正を中断";
     $("corner-selection").value = String(selected);
     $("image-stage").hidden = showingResult;
     $("cropped-image").hidden = !showingResult;
     $("crop-hint").textContent = showingResult ? "保存される補正画像です。等倍で文字を確認できます。"
-      : "四隅の丸を板面に合わせて動かし、「補正して確認」を押してください。自動検出は準備中です。";
+      : "四隅の丸を板面に合わせて動かし、「補正して確認」を押してください。自動検出の枠が合わない場合は手動で調整できます。";
     if (message) $("crop-status").textContent = message;
     onChange();
   }
@@ -47,7 +51,7 @@ export function createCropEditor({ onChange }) {
     render("四隅を変更しました。もう一度補正して確認してください。");
   }
   function move(index, x, y) {
-    if (locked || !state.source || state.busy || showingResult) return;
+    if (locked || !state.source || state.busy || detecting || showingResult) return;
     const points = state.corners.map((point) => ({ ...point }));
     points[index] = { x: Math.max(0, Math.min(state.source.width - 1, x)),
       y: Math.max(0, Math.min(state.source.height - 1, y)) };
@@ -55,7 +59,7 @@ export function createCropEditor({ onChange }) {
   }
   buttons.forEach((button, index) => {
     button.addEventListener("pointerdown", (event) => {
-      if (locked || state.busy || !state.source || showingResult || event.button !== 0 || !event.isPrimary) return;
+      if (locked || state.busy || detecting || !state.source || showingResult || event.button !== 0 || !event.isPrimary) return;
       selected = index;
       drag = { id: event.pointerId, index };
       button.setPointerCapture(event.pointerId);
@@ -92,10 +96,11 @@ export function createCropEditor({ onChange }) {
   $("crop-reset").addEventListener("click", () => { state.reset(); invalidate(state.corners); render("画像全体の枠に戻しました。補正して確認してください。"); });
   $("crop-edit").addEventListener("click", () => { showingResult = false; render("元画像で四隅を調整できます。変更後は再度補正してください。"); });
   $("crop-cancel").addEventListener("click", () => { controller?.abort(); });
-  $("crop-preview").addEventListener("click", async () => {
-    if (locked || state.busy || !state.source) return;
+  async function preview() {
+    if (locked || state.busy || detecting || !state.source) return;
     controller = new AbortController();
     const signal = controller.signal;
+    const current = generation;
     try {
       await state.preview(async (source, plan) => {
         render("補正しています。中断して四隅の調整に戻れます。");
@@ -113,32 +118,70 @@ export function createCropEditor({ onChange }) {
             context.putImageData(new ImageData(rectifyRows(pixels, plan, row, count), plan.width, count), 0, row);
           }
           return output;
-        } catch (error) { output.width = 0; output.height = 0; throw error; }
+        } catch (error) { if (current === generation) { output.width = 0; output.height = 0; } throw error; }
       });
+      if (current !== generation) return;
       showingResult = state.savable;
       if (!showingResult) { render("補正を中断しました。"); return; }
       render(`補正画像：${state.result.width} × ${state.result.height} px。確認して保存してください。`);
     } catch (error) {
+      if (current !== generation) return;
       showingResult = false;
       render(error instanceof CropError ? error.message : "補正できませんでした。画像は残っています。空き容量と四隅を確認し、再試行してください。");
-    } finally { controller = null; render(); }
-  });
+    } finally { if (controller?.signal === signal) controller = null; if (current === generation) render(); }
+  }
+  $("crop-preview").addEventListener("click", preview);
   document.addEventListener("visibilitychange", () => { if (document.hidden) controller?.abort(); });
   window.addEventListener("pagehide", () => { controller?.abort(); });
   return {
-    get busy() { return state.busy; },
+    get busy() { return state.busy || detecting; },
     get savable() { return state.savable && showingResult; },
     get canvas() { return state.result; },
     setLocked(value) { locked = Boolean(value); lockControls(); },
-    begin(source) {
+    async begin(source) {
+      controller?.abort();
+      const current = ++generation;
       state.begin(source);
       selected = 0;
       showingResult = false;
       $("crop-overlay").setAttribute("viewBox", `0 0 ${source.width - 1} ${source.height - 1}`);
       $("image-stage").style.setProperty("--source-width", `${source.width}px`);
-      render("画像全体を初期の枠にしています。板面の四隅を指定してください。");
+      detecting = true;
+      controller = new AbortController();
+      const signal = controller.signal;
+      render("板面の四隅を検出しています。中断して手動で調整できます。");
+      const small = document.createElement("canvas");
+      try {
+        const size = detectionSize(source.width, source.height);
+        small.width = size.width; small.height = size.height;
+        const context = small.getContext("2d");
+        context.drawImage(source, 0, 0, small.width, small.height);
+        let lastYield = performance.now();
+        const points = await detectCorners(context.getImageData(0, 0, small.width, small.height), {
+          signal, originalWidth: source.width, originalHeight: source.height,
+          yieldTask: async () => {
+            if (performance.now() - lastYield >= 8) {
+              await new Promise((resolve) => window.setTimeout(resolve, 0));
+              lastYield = performance.now();
+            }
+            if (document.hidden) throw new CropError("検出を中断しました。");
+          },
+        });
+        if (current !== generation) return;
+        state.change(points);
+        detecting = false;
+        controller = null;
+        await preview();
+      } catch {
+        if (current === generation) render("検出を中断しました。画像全体の枠から手動で調整できます。");
+      } finally {
+        small.width = 0; small.height = 0;
+        if (current === generation) { detecting = false; controller = null; render(); }
+      }
     },
     clear() {
+      generation++;
+      detecting = false;
       controller?.abort();
       state.clear();
       drag = null;

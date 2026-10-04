@@ -24,13 +24,14 @@ export function syntheticBoard(index) {
   return { image: { width, height, data }, points };
 }
 const immediate = async () => {};
-test("黒板・ホワイトボード・スクリーン24種：全四隅3%以内の正解率90%以上", async () => {
+test("黒板・ホワイトボード・スクリーン24種：全四隅3%以内の正解率90%以上", async (t) => {
   let correct = 0;
   for (let i = 0; i < 24; i++) {
     const { image, points } = syntheticBoard(i);
     const actual = await detectCorners(image, { yieldTask: immediate });
     if (actual.every((p, j) => Math.hypot(p.x - points[j].x, p.y - points[j].y) <= Math.hypot(image.width, image.height) * 0.03)) correct++;
   }
+  t.diagnostic(`正解 ${correct}/24 (${correct / 24 * 100}%)`);
   assert.ok(correct / 24 >= 0.9, `${correct}/24`);
 });
 test("無地・ノイズだけの画像は画像全体へ戻す", async () => {
