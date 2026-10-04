@@ -8,7 +8,8 @@
   },
   "scripts": {
     "test": "node --test",
-    "build": "node scripts/build-site.js"
+    "build": "node scripts/build-site.js",
+    "measure:corners": "node scripts/measure-corners.js"
   },
   "devDependencies": {
     "fake-indexeddb": "6.2.5"
