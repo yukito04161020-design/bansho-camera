@@ -121,6 +121,11 @@ export function createDriveFolders({ session, fetcher = globalThis.fetch } = {})
     return { name, folderId: uniqueNamed(files, name)?.id || null };
   }
   return {
+    async settingsFolder({ create = false, signal } = {}) {
+      const root = create ? await ensure("root", "板書", signal) : await find("root", "板書", signal);
+      if (!root) return null;
+      return create ? ensure(root.id, "設定", signal) : find(root.id, "設定", signal);
+    },
     async listSessionFolders(className, { signal } = {}) {
       classFolderName(className);
       const root = await find("root", "板書", signal);
@@ -131,7 +136,7 @@ export function createDriveFolders({ session, fetcher = globalThis.fetch } = {})
       const root = await find("root", "板書", signal);
       if (!root) return [];
       const classes = (await list(root.id, undefined, signal)).filter((file) => {
-        try { classFolderName(file.name); return true; } catch { return false; }
+        try { classFolderName(file.name); return file.name !== "設定"; } catch { return false; }
       });
       const names = new Set();
       for (const file of classes) {
