@@ -1,4 +1,4 @@
-import { timetableRecord } from "./timetable-logic.js";
+import { timetableRecord, manualLessonRecord } from "./timetable-logic.js";
 import { captureSettings } from "./capture-save.js";
 
 export class QueueStorageError extends Error {
@@ -106,6 +106,16 @@ export async function openUploadStore({ indexedDB = globalThis.indexedDB, databa
     writeCaptureSettings: (input) => {
       const value = captureSettings(input);
       return transaction(db, "readwrite", (uploads, state) => { state.put(value, "captureSettings"); });
+    },
+    readManualLesson: () => transaction(db, "readonly", (uploads, state, done) => {
+      state.get("manualLesson").onsuccess = (event) => {
+        try { done(manualLessonRecord(event.target.result)); }
+        catch { event.target.transaction.abort(); }
+      };
+    }),
+    writeManualLesson: (input) => {
+      const value = manualLessonRecord(input);
+      return transaction(db, "readwrite", (uploads, state) => { state.put(value, "manualLesson"); });
     },
     readTimetable: () => transaction(db, "readonly", (uploads, state, done) => {
       state.get("timetable").onsuccess = (event) => {

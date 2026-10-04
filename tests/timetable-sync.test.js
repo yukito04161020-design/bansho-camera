@@ -62,3 +62,17 @@ test("保存でもDriveが新しい場合はそちらを使い、並行した保
   assert.deepEqual(state.remote, record(1002));
   store.close();
 });
+test("再起動しても当日の同時限は手動選択を優先し、翌週には持ち越さない", async () => {
+  const { manualLesson, selectLesson } = await import("../public/timetable-logic.js");
+  const indexedDB = new IDBFactory();
+  const store = await openUploadStore({ indexedDB });
+  const choice = manualLesson(entries, "2026-10-05T09:30:00+09:00", "物理");
+  await store.writeManualLesson({ ...choice, token: "ignored" });
+  store.close();
+  const reopened = await openUploadStore({ indexedDB });
+  const manual = await reopened.readManualLesson();
+  assert.deepEqual(manual, choice);
+  assert.equal(selectLesson(entries, "2026-10-05T09:40:00+09:00", manual).className, "物理");
+  assert.equal(selectLesson(entries, "2026-10-12T09:40:00+09:00", manual).className, "数学");
+  reopened.close();
+});

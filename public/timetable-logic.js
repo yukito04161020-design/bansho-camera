@@ -59,8 +59,18 @@ export function manualLesson(entries, capturedAt, className) {
 export function selectLesson(entries, capturedAt, manual) {
   const result = detectLesson(entries, capturedAt);
   const manuallySelected = manual?.date === japanDate(capturedAt)
-    && (result.lesson ? manual.keys.includes(result.lesson.key)
-      : result.candidates.some((item) => manual.keys.includes(item.key)));
+    && (manual.keys.length === 0 ? result.candidates.length === 0
+      : result.lesson ? manual.keys.includes(result.lesson.key)
+        : result.candidates.some((item) => manual.keys.includes(item.key)));
   return { className: manuallySelected ? manual.className : result.lesson?.entry.className || "",
     lesson: result.lesson, manual: Boolean(manuallySelected) };
+}
+
+export function manualLessonRecord(input) {
+  if (!input) return null;
+  if (typeof input.date !== "string" || japanDate(`${input.date}T00:00:00+09:00`) !== input.date
+    || !Array.isArray(input.keys) || input.keys.some((key) => typeof key !== "string" || !/^\d{4}-\d{2}-\d{2}:.+$/u.test(key))) {
+    throw new TypeError("手動選択の時限を確認できません。");
+  }
+  return { className: classFolderName(input.className), date: input.date, keys: [...input.keys] };
 }

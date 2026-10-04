@@ -97,6 +97,25 @@
             <input id="session-number" type="number" min="1" step="1" inputmode="numeric" placeholder="自動">
             <button id="refresh-folders" type="button" disabled>ドライブの一覧を再取得</button>
           </details>
+      <button id="open-timetable" type="button" disabled aria-controls="timetable-panel">時間割を編集</button>
+      <section id="timetable-panel" hidden aria-labelledby="timetable-title">
+        <h3 id="timetable-title">時間割（日本時間）</h3>
+        <button id="close-timetable" type="button">時間割を閉じる</button>
+        <p>開始10分前〜終了10分後に授業を自動選択します。重なる場合は授業本来の時間を優先し、決まらなければ未判定です。</p>
+        <p id="timetable-status" role="status">時間割を読み込んでいます。</p>
+        <p id="timetable-empty">時間割はまだありません。</p>
+        <ul id="timetable-list"></ul>
+        <form id="timetable-form">
+          <label for="timetable-day">曜日</label>
+          <select id="timetable-day" name="day"><option value="1">月</option><option value="2">火</option><option value="3">水</option><option value="4">木</option><option value="5">金</option><option value="6">土</option><option value="7">日</option></select>
+          <label for="timetable-period">時限（表示名）</label><input id="timetable-period" name="period" required placeholder="1限">
+          <label for="timetable-class">授業名</label><input id="timetable-class" name="className" required autocomplete="off" list="class-list">
+          <label for="timetable-start">開始時刻</label><input id="timetable-start" name="start" type="time" required step="60">
+          <label for="timetable-end">終了時刻</label><input id="timetable-end" name="end" type="time" required step="60">
+          <button id="timetable-submit" type="submit">時間割を追加</button>
+          <button id="timetable-reset" type="button">入力を取り消す</button>
+        </form>
+      </section>
           <p id="resolution">映像：未取得</p>
           <p id="request">要求：背面カメラ・高解像度</p>
           <details id="camera-options">

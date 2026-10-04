@@ -56,3 +56,26 @@ test("授業名は既存フォルダ名規則で検証し、不正な時間割�
   const value = timetableRecord({ updatedAt: 1, entries: [lesson({ token: "ignored" })], token: "ignored" });
   assert.deepEqual(value, { updatedAt: 1, entries: [lesson()] });
 });
+test("時間割外の手動選択は同日の時間割外で保ち、授業が始まれば自動判定する", () => {
+  const entries = [lesson()];
+  const manual = manualLesson(entries, at("08:00"), "物理");
+  assert.equal(selectLesson(entries, at("08:30"), manual).className, "物理");
+  assert.equal(selectLesson(entries, at("08:50"), manual).className, "数学");
+  assert.equal(selectLesson(entries, at("08:00", "2026-10-06"), manual).className, "");
+});
+test("撮影時の自動判定授業を既存の回決定と宛先固定へつなぐ", async () => {
+  const { captureDestination, createCapturedDraft } = await import("../public/capture-save.js");
+  const entries = [lesson(), lesson({ id: "eng", className: "英語", start: "11:00", end: "12:00" })];
+  let instant = at("09:30");
+  let selected = selectLesson(entries, instant).className;
+  const draft = createCapturedDraft(instant, (capturedAt) => captureDestination({
+    className: selected, capturedAt, existingNames: ["第02回_2026-09-28"],
+  }));
+  assert.equal(draft.destination.className, "数学");
+  assert.equal(draft.destination.sessionFolderName, "第03回_2026-10-05");
+  instant = at("11:30");
+  selected = selectLesson(entries, instant).className;
+  assert.equal(selected, "英語");
+  assert.equal(draft.resolve().className, "数学");
+  assert.equal(draft.destination.capturedAt, Date.parse(at("09:30")));
+});
