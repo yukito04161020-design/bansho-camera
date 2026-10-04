@@ -93,3 +93,27 @@ test("許可後に背面候補の能力を順番に調べ、前面を除外し�
   assert.equal(chooseCamera(candidates, 3).selected.deviceId, "triple");
   assert.ok(requests.every((value) => value.width.ideal === 4032 && value.height.ideal === 3024));
 });
+
+test("能力不明の望遠ではハードウェアズーム値を光学倍率と断定しない", async () => {
+  const camera = device("tele", "背面望遠カメラ", { min: 1, max: 8, step: 1 });
+  const track = { applyConstraints: async () => {}, getSettings: () => ({ zoom: 3 }) };
+  assert.deepEqual(await setCameraMagnification(track, camera, 3), { requested: 3, actual: null });
+});
+
+test("列挙が使えなくても現在の背面カメラを調べ、裏へ移った場合は解放する", async () => {
+  for (const abort of [false, true]) {
+    let running = 0;
+    let active = true;
+    const media = {
+      enumerateDevices: async () => { if (abort) active = false; throw new Error("非対応"); },
+      getUserMedia: async () => {
+        running++;
+        const track = { label: "背面広角カメラ", getSettings: () => ({ facingMode: "environment", deviceId: "wide" }), stop: () => running-- };
+        return { getVideoTracks: () => [track], getTracks: () => [track] };
+      },
+    };
+    if (abort) await assert.rejects(discoverCameras(media, () => active), /中断/);
+    else assert.equal((await discoverCameras(media))[0].deviceId, "wide");
+    assert.equal(running, 0);
+  }
+});

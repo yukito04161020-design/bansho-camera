@@ -104,6 +104,7 @@ async function configureZoom(track, current) {
   if (automaticCamera) {
     range = selectedAutomatic.virtual && selectedAutomatic.range?.max > selectedAutomatic.range?.min
       ? selectedAutomatic.range : { min: 0.5, max: Math.max(10, ...automaticCandidates.map((camera) => (camera.base ?? 1) * (camera.range?.max ?? 1))), step: 0.1 };
+    requestedMagnification = normalizeZoom(requestedMagnification, range);
     zoomSlider.min = range.min; zoomSlider.max = range.max; zoomSlider.step = range.step;
     const result = await setCameraMagnification(track, selectedAutomatic, requestedMagnification);
     if (current !== generation) return;

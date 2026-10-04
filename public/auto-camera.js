@@ -81,7 +81,7 @@ export async function setCameraMagnification(track, camera, zoom) {
   if (!camera.range) return { requested: zoom, actual: camera.base };
   const factor = camera.virtual ? 1 : camera.base ?? 1;
   const result = await applyTrackZoom(track, zoom / factor, camera.range);
-  return { requested: result.requested * factor, actual: result.actual === null ? null : result.actual * factor };
+  return { requested: result.requested * factor, actual: result.actual === null || (!camera.virtual && camera.base === null) ? null : result.actual * factor };
 }
 
 export async function compareCameras(candidates, { open, capture, choose, active = () => true }) {
