@@ -45,14 +45,16 @@ export async function saveCapturedImage({ canvas, destination, enqueue }) {
 // 撮影日時を保持し、未確定の宛先だけを確認画面で決める。
 export function createCapturedDraft(capturedAt, resolveDestination) {
   let destination = null;
+  let fixedAtCapture = false;
   const draft = { capturedAt, get destination() { return destination; },
     resolve() {
-      if (!destination) {
-        try { destination = resolveDestination(capturedAt); } catch { /* 選択を待つ。 */ }
+      if (!fixedAtCapture) {
+        try { destination = resolveDestination(capturedAt); } catch { destination = null; }
       }
       return destination;
     } };
   draft.resolve();
+  fixedAtCapture = Boolean(destination);
   return draft;
 }
 

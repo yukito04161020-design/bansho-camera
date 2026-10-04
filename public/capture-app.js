@@ -48,7 +48,7 @@ function render() {
   $("actual-size").disabled = saving || crop.busy;
   setCaptureOperationActive(initializing || saving || crop.busy || authorizing || folderLoading || token.status === "valid");
   let destination = null;
-  try { destination = selection(); } catch { /* 未確認や入力不正は撮影前に案内する。 */ }
+  try { destination = selection(captured?.capturedAt); } catch { /* 未確認や入力不正は撮影前に案内する。 */ }
   $("destination-status").textContent = (destination
     ? `授業：${destination.className}／${destination.sessionFolderName}`
     : `授業：${settings.selectedClass || "未選択"}／回：未確定。初回は保存先のオンライン確認が必要です。`)
@@ -198,7 +198,7 @@ $("apply-class").addEventListener("click", async () => {
 });
 $("session-number").addEventListener("input", () => {
   destinationMessage = "";
-  try { selection(); }
+  try { selection(captured?.capturedAt); }
   catch (error) { destinationMessage = error instanceof FolderNameError ? error.message : "授業の保存先をオンラインで確認してください。"; }
   render();
 });

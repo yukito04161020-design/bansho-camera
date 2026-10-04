@@ -116,7 +116,9 @@ test("授業未選択で撮影した画像を残し、選択するまで保存�
   await saveCapturedImage({ canvas, destination: draft.destination, enqueue: (value) => { item = value; } });
   assert.deepEqual(item, { ...destination, blob });
   selected = false;
-  assert.deepEqual(draft.resolve(), destination);
+  assert.equal(draft.resolve(), null);
+  const fixed = createCapturedDraft(destination.capturedAt, () => ({ ...destination }));
+  assert.deepEqual(fixed.resolve(), destination);
 });
 
 test("撮影不可のすべての状態に日本語の理由を返し、撮影可能なら空にする", async () => {
