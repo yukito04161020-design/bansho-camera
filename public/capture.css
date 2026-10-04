@@ -41,3 +41,7 @@
   .review-header { width: 38%; max-height: 100%; min-height: 0; overflow: auto; padding-bottom: max(0.75rem, env(safe-area-inset-bottom)); }
   .review .image-area { width: 62%; }
 }
+#camera-name { font-size: 0.7rem; margin: 0; }
+#camera-comparison { background: #101715; color: white; width: 95vw; max-height: 85dvh; overflow: auto; }
+#comparison-images { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 0.75rem; }
+#comparison-images canvas { width: 100%; height: auto; }
