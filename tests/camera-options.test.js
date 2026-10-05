@@ -73,7 +73,7 @@ test("倍率指定が無視された場合・読めない場合は実際の倍�
 function selectedFixture() {
   const calls = [];
   const track = { getSettings: () => ({ facingMode: "environment" }),
-    getCapabilities: () => ({ width: { max: 4032 }, height: { max: 3024 } }),
+    getCapabilities: () => ({ width: { max: 4032 }, height: { max: 3024 }, zoom: { min: 1, max: 8 } }),
     applyConstraints: async (constraints) => { calls.push(constraints); } };
   const stream = { getVideoTracks: () => [track] };
   const mediaDevices = { getUserMedia: async (constraints) => { calls.push(constraints); return stream; } };

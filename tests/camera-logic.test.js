@@ -99,3 +99,41 @@ test("映像未準備・ゼロサイズ・描画不可の場合は画像を作�
   assert.throws(() => captureFrame({ readyState: 2, videoWidth: 0, videoHeight: 0 }, canvas), /準備/);
   assert.throws(() => captureFrame({ readyState: 2, videoWidth: 1920, videoHeight: 1080 }, { getContext: () => null }), /表示/);
 });
+
+test("高解像度で隠れたズーム能力を最小制約で取り直し、ズームを保つ解像度へ戻す", async () => {
+  let opens = 0, stopped = 0, highResolution = false;
+  const requests = [];
+  const media = { getUserMedia: async ({ video }) => {
+    opens++;
+    assert.deepEqual(video.deviceId, { exact: "dual" });
+    if (opens === 2) assert.equal(video.width, undefined);
+    const minimal = opens === 2;
+    const track = { label: "背面デュアル広角カメラ", stop() { stopped++; },
+      getSettings: () => ({ facingMode: "environment" }),
+      getCapabilities: () => ({ width: { max: 3840 }, height: { max: 2160 },
+        ...(minimal && !highResolution ? { zoom: { min: 1, max: 10 } } : {}) }),
+      applyConstraints: async value => { requests.push(value); if (minimal) highResolution = Boolean(value.width); } };
+    return { getVideoTracks: () => [track], getTracks: () => [track] };
+  } };
+  const camera = await openRearCamera(media, { deviceId: "dual" });
+  assert.equal(opens, 2); assert.equal(stopped, 1);
+  assert.deepEqual(camera.stream.getVideoTracks()[0].getCapabilities().zoom, { min: 1, max: 10 });
+  assert.equal(camera.requested.width, undefined);
+  assert.deepEqual(requests.at(-2).width, { ideal: 3840 });
+  assert.equal(requests.at(-1).width, undefined);
+});
+
+test("最小制約でズームと最大解像度を両立できれば、その最大値を使う", async () => {
+  let opens = 0;
+  const media = { getUserMedia: async () => {
+    const minimal = ++opens === 2;
+    const track = { stop() {}, getSettings: () => ({ facingMode: "environment" }),
+      getCapabilities: () => ({ width: { max: 3840 }, height: { max: 2160 },
+        ...(minimal ? { zoom: { min: 1, max: 8 } } : {}) }), applyConstraints: async () => {} };
+    return { getVideoTracks: () => [track], getTracks: () => [track] };
+  } };
+  const camera = await openRearCamera(media, { deviceId: "triple" });
+  assert.equal(camera.adjusted, true);
+  assert.deepEqual(camera.requested.width, { ideal: 3840 });
+  assert.deepEqual(camera.stream.getVideoTracks()[0].getCapabilities().zoom, { min: 1, max: 8 });
+});

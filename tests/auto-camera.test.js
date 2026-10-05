@@ -23,7 +23,7 @@ test("仮想カメラがない・ズーム非対応の場合、実現できる�
   assert.equal(chooseCamera([ultra, zoomWide], 3).selected, zoomWide);
 });
 test("倍率が不明な望遠・名前不明・同等の候補は撮り比べを求める", () => {
-  for (const cameras of [[wide, tele], [wide, device("unknown", "")], [virtual, device("dual", "Back Dual Camera", { min: 1, max: 8 })]]) {
+  for (const cameras of [[wide, tele], [wide, device("unknown", "")]]) {
     const decision = chooseCamera(cameras, 3);
     assert.equal(decision.selected, null);
     assert.equal(decision.candidates.length, 2);
@@ -117,3 +117,10 @@ test("列挙が使えなくても現在の背面カメラを調べ、裏へ移�
     assert.equal(running, 0);
   }
 });
+
+test("複数のズーム対応仮想カメラでも撮り比べず、広い範囲を選ぶ", () => {
+   const dual = device("dual", "背面デュアル広角カメラ", { min: 1, max: 8 });
+   const decision = chooseCamera([wide, tele, dual, virtual], 3);
+   assert.equal(decision.selected, virtual);
+   assert.match(decision.reason, /仮想カメラ/);
+ });

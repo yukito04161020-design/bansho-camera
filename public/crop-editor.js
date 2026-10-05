@@ -12,6 +12,19 @@ export function createCropEditor({ onChange }) {
   let locked = false;
   let detecting = false;
   let generation = 0;
+  let interrupted = null;
+  function suspend() {
+    if (detecting || state.busy) interrupted = detecting ? "detect" : "preview";
+    controller?.abort();
+    drag = null;
+  }
+  function resume() {
+    if (document.hidden || detecting || state.busy || !interrupted || !state.source) return;
+    const phase = interrupted;
+    interrupted = null;
+    if (phase === "detect") void editor.begin(state.source, { restore: true });
+    else void preview();
+  }
   function lockControls() {
     buttons.forEach((button) => { button.disabled = locked || state.busy || detecting; });
     $("crop-preview").disabled = locked || !state.source || state.busy || detecting;
@@ -128,21 +141,22 @@ export function createCropEditor({ onChange }) {
       if (current !== generation) return;
       showingResult = false;
       render(error instanceof CropError ? error.message : "補正できませんでした。画像は残っています。空き容量と四隅を確認し、再試行してください。");
-    } finally { if (controller?.signal === signal) controller = null; if (current === generation) render(); }
+    } finally { if (controller?.signal === signal) controller = null; if (current === generation) { render(); resume(); } }
   }
   $("crop-preview").addEventListener("click", preview);
-  document.addEventListener("visibilitychange", () => { if (document.hidden) controller?.abort(); });
-  window.addEventListener("pagehide", () => { controller?.abort(); });
-  return {
+  document.addEventListener("visibilitychange", () => { if (document.hidden) suspend(); else resume(); });
+  window.addEventListener("pagehide", suspend);
+  window.addEventListener("pageshow", resume);
+  const editor = {
     get busy() { return state.busy || detecting; },
     get savable() { return state.savable && showingResult; },
     get canvas() { return state.result; },
     setLocked(value) { locked = Boolean(value); lockControls(); },
-    async begin(source) {
+    async begin(source, { restore = false } = {}) {
+      interrupted = null;
       controller?.abort();
       const current = ++generation;
-      state.begin(source);
-      selected = 0;
+      if (!restore) { state.begin(source); selected = 0; }
       showingResult = false;
       $("crop-overlay").setAttribute("viewBox", `0 0 ${source.width - 1} ${source.height - 1}`);
       $("image-stage").style.setProperty("--source-width", `${source.width}px`);
@@ -176,10 +190,15 @@ export function createCropEditor({ onChange }) {
         if (current === generation) render("検出を中断しました。画像全体の枠から手動で調整できます。");
       } finally {
         small.width = 0; small.height = 0;
-        if (current === generation) { detecting = false; controller = null; render(); }
+        if (current === generation) {
+          detecting = false;
+          if (controller?.signal === signal) controller = null;
+          render(); resume();
+        }
       }
     },
     clear() {
+      interrupted = null;
       generation++;
       detecting = false;
       controller?.abort();
@@ -191,4 +210,5 @@ export function createCropEditor({ onChange }) {
       render();
     },
   };
+  return editor;
 }

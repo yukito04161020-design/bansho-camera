@@ -66,3 +66,69 @@ test("検出中断・裏への移動・撮り直しでは結果を保存可能�
     }
   } finally { env.restore(); }
 });
+
+async function settled(editor) {
+  for (let i = 0; i < 200; i++) {
+    if (!editor.busy) return;
+    await new Promise(resolve => setTimeout(resolve, 5));
+  }
+  assert.fail("画像処理が完了しませんでした。");
+}
+
+test("検出途中で裏へ移った場合は元画像を保持し、前面復帰後に検出と補正をやり直す", async () => {
+  const env = environment();
+  try {
+    const editor = createCropEditor({ onChange() {} });
+    const source = env.element("image");
+    const pending = editor.begin(source);
+    env.doc.hidden = true; env.listeners.get("visibilitychange")();
+    await pending;
+    assert.equal(source.width, 80); assert.equal(source.height, 60);
+    assert.equal(editor.savable, false);
+    env.doc.hidden = false; env.listeners.get("visibilitychange")();
+    await settled(editor);
+    assert.equal(editor.savable, true);
+    assert.equal(env.element("image-stage").hidden, true);
+    editor.clear();
+  } finally { env.restore(); }
+});
+
+test("四隅調整後の補正中断では四隅を保持して再補正し、完成画像は裏へ移っても保持する", async () => {
+  const env = environment();
+  try {
+    const editor = createCropEditor({ onChange() {} });
+    await editor.begin(env.element("image"));
+    env.element("crop-edit").events.get("click")();
+    env.element("crop-nudge").events.get("click")();
+    const points = env.element("crop-outline").points;
+    const pending = env.element("crop-preview").events.get("click")();
+    env.doc.hidden = true; env.listeners.get("visibilitychange")();
+    await pending;
+    assert.equal(editor.savable, false);
+    assert.equal(env.element("crop-outline").points, points);
+    env.doc.hidden = false; env.listeners.get("visibilitychange")();
+    await settled(editor);
+    assert.equal(editor.savable, true);
+    assert.equal(env.element("crop-outline").points, points);
+    const canvas = editor.canvas;
+    env.doc.hidden = true; env.listeners.get("visibilitychange")();
+    env.doc.hidden = false; env.listeners.get("visibilitychange")();
+    assert.equal(editor.canvas, canvas); assert.equal(editor.savable, true);
+    editor.clear();
+  } finally { env.restore(); }
+});
+
+test("処理停止の完了前に前面へ戻っても、完了後に自動でやり直す", async () => {
+  const env = environment();
+  try {
+    const editor = createCropEditor({ onChange() {} });
+    await editor.begin(env.element("image"));
+    env.element("crop-edit").events.get("click")();
+    const pending = env.element("crop-preview").events.get("click")();
+    env.doc.hidden = true; env.listeners.get("visibilitychange")();
+    env.doc.hidden = false; env.listeners.get("visibilitychange")();
+    await pending; await settled(editor);
+    assert.equal(editor.savable, true);
+    editor.clear();
+  } finally { env.restore(); }
+});
