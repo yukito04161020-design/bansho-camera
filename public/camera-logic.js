@@ -12,11 +12,11 @@ export function resolutionConstraints(capabilities = {}, deviceId = "") {
 }
 
 export async function openRearCamera(mediaDevices, { deviceId = "" } = {}) {
-  const stream = await mediaDevices.getUserMedia({
+  let stream = await mediaDevices.getUserMedia({
     audio: false,
     video: resolutionConstraints({}, deviceId),
   });
-  const track = stream.getVideoTracks()[0];
+  let track = stream.getVideoTracks()[0];
   try {
     if (!track) throw new Error("映像トラックがありません。");
     // 背面指定を無視するブラウザで、前面を背面と誤認して検証しないようにします。
@@ -34,6 +34,26 @@ export async function openRearCamera(mediaDevices, { deviceId = "" } = {}) {
       } catch {
         // 能力値の取得・再要求が使えなくても、最初に取得した映像で検証を続けます。
         requested = resolutionConstraints({}, deviceId);
+      }
+    }
+    // 高解像度要求でズーム能力が消えるSafariでは、制約の少ない同じカメラを試す。
+    const capabilities = () => { try { return track.getCapabilities?.() || {}; } catch { return {}; } };
+    const hasZoom = (value) => value.zoom?.max > value.zoom?.min && value.zoom.min > 0;
+    if (deviceId && !hasZoom(capabilities())) {
+      stream.getTracks().forEach((item) => item.stop());
+      stream = await mediaDevices.getUserMedia({ audio: false, video: { deviceId: { exact: deviceId }, facingMode: { exact: "environment" } } });
+      track = stream.getVideoTracks()[0];
+      if (!track || (track.getSettings?.().facingMode && track.getSettings().facingMode !== "environment")) throw new Error("背面カメラを取得できませんでした。");
+      const available = capabilities();
+      requested = { deviceId: { exact: deviceId }, facingMode: { exact: "environment" } };
+      adjusted = false;
+      if (track.applyConstraints && available.width?.max && available.height?.max) {
+        const maximum = { ...requested, width: { ideal: available.width.max }, height: { ideal: available.height.max } };
+        try {
+          await track.applyConstraints(maximum);
+          if (hasZoom(available) && !hasZoom(capabilities())) await track.applyConstraints(requested);
+          else { requested = maximum; adjusted = true; }
+        } catch { await track.applyConstraints(requested); }
       }
     }
     return { stream, requested, adjusted };

@@ -12,6 +12,15 @@ export function describeCamera(device, capabilities = {}) {
 
 export function chooseCamera(cameras, zoom, remembered = {}) {
   const virtual = cameras.filter((camera) => camera.virtual && camera.range && camera.range.max > camera.range.min);
+  if (virtual.length) {
+    // 複数の仮想カメラも撮り比べず、指定倍率を含む広い範囲を優先する。
+    const ranked = [...virtual].sort((a, b) => {
+      const distance = (camera) => Math.abs(zoom - Math.max(camera.range.min, Math.min(camera.range.max, zoom)));
+      return distance(a) - distance(b) || (b.range.max - b.range.min) - (a.range.max - a.range.min)
+        || a.deviceId.localeCompare(b.deviceId);
+    });
+    return { candidates: ranked, selected: ranked[0], reason: "ズーム対応の仮想カメラを選びました。" };
+  }
   let candidates = virtual;
   if (!candidates.length) {
     const singles = cameras.filter((camera) => !camera.virtual);
@@ -29,7 +38,9 @@ export function chooseCamera(cameras, zoom, remembered = {}) {
   }
   const key = `${zoom}:${candidates.map((camera) => camera.deviceId).sort().join("|")}`;
   const saved = candidates.find((camera) => camera.deviceId === remembered[key]);
-  return { key, candidates, selected: saved || (candidates.length === 1 ? candidates[0] : null) };
+  const selected = saved || (candidates.length === 1 ? candidates[0] : null);
+  return { key, candidates, selected, reason: selected ? "指定倍率に応じた単体カメラを選びました。"
+    : "ズーム対応の仮想カメラがなく、単体カメラの倍率・視認性を判断できないため撮り比べが必要です。" };
 }
 
 const storageKey = "bansho-camera.auto-choices";

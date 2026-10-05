@@ -1,9 +1,10 @@
+import { bindCameraStage } from "./camera-stage.js";
 import { discoverCameras, chooseCamera, readChoices, rememberChoice, compareCameras, setCameraMagnification } from "./auto-camera.js";
 import { captureDisabledReason } from "./capture-save.js";
 import { captureFrame } from "./camera-logic.js";
 import { applyTrackZoom, cameraOptions, normalizeZoom, openSelectedCamera, readCameraPreference, writeCameraPreference, zoomRange } from "./camera-options.js";
 import { initializeUpdates } from "./app-update.js";
-import { createLiveZoom, createPinchZoom } from "./camera-zoom.js";
+import { createLiveZoom } from "./camera-zoom.js";
 
 const video = document.querySelector("#camera");
 const canvas = document.querySelector("#image");
@@ -29,6 +30,8 @@ let automaticCandidates = null;
 let selectedAutomatic = null;
 let requestedMagnification = null;
 let cancelComparison = null;
+let selectionReason = "";
+let resumeCamera = false;
 let stream = null;
 let wakeLock = null;
 let generation = 0;
@@ -120,7 +123,7 @@ async function configureZoom(track, current) {
         }
         return setCameraMagnification(track, selectedAutomatic, value);
       },
-      onRequested: (value) => { zoomSlider.value = value; },
+      onRequested: (value) => { requestedMagnification = value; zoomSlider.value = value; },
       onApplied: (result, { settled }) => { showZoom(result, settled); if (settled) rememberCamera(); },
       onError: () => { zoomStatus.textContent = "倍率の変更に失敗しました。再試行してください。"; },
       onBusy: (value) => { zoomApplying = value; updateVideoState(); },
@@ -233,6 +236,7 @@ function stopCamera() {
   updateVideoState();
   stopButton.disabled = true;
   startButton.disabled = starting;
+  startButton.hidden = false;
   if (cameraSelect) cameraSelect.disabled = starting || cameraSelect.options.length <= 1;
   if (wakeLock) {
     const lock = wakeLock;
@@ -254,7 +258,7 @@ function cameraError(error) {
 }
 
 async function startCamera({ deviceId = cameraSelect?.value || "", allowFallback = true } = {}) {
-  if (starting || stream || document.hidden || updates.isNavigating()) return;
+  if (starting || stream || document.hidden || !imageScreen.hidden || updates.isNavigating()) return;
   if (!window.isSecureContext || !navigator.mediaDevices?.getUserMedia) {
     status.textContent = "カメラを使うには、HTTPSの公開URLをiPhoneのSafariで開いてください。";
     return;
@@ -273,8 +277,23 @@ async function startCamera({ deviceId = cameraSelect?.value || "", allowFallback
       const active = () => current === generation && !document.hidden;
       automaticCandidates ||= await discoverCameras(navigator.mediaDevices, active);
       const decision = chooseCamera(automaticCandidates, requestedMagnification, readChoices(storage));
+      selectionReason = decision.reason;
+      const diagnostics = document.querySelector("#camera-diagnostics");
+      if (diagnostics) diagnostics.textContent = selectionReason;
       selectedAutomatic = decision.selected;
       if (!selectedAutomatic) {
+        const approved = await new Promise((resolve) => {
+          const dialog = document.querySelector("#camera-comparison");
+          const button = document.querySelector("#begin-comparison");
+          const finish = (value) => { cancelComparison = null; dialog.close(); button.onclick = null; resolve(value); };
+          document.querySelector("#comparison-images").replaceChildren();
+          button.hidden = false;
+          cancelComparison = () => finish(false);
+          dialog.oncancel = (event) => { event.preventDefault(); finish(false); };
+          button.onclick = () => finish(true);
+          if (active()) dialog.showModal(); else finish(false);
+        });
+        if (!approved || !active()) return;
         status.textContent = "見やすいカメラを撮り比べています。板面に向けたままお待ちください。";
         selectedAutomatic = await compareCameras(decision.candidates, {
           active,
@@ -303,6 +322,7 @@ async function startCamera({ deviceId = cameraSelect?.value || "", allowFallback
             const dialog = document.querySelector("#camera-comparison");
             const list = document.querySelector("#comparison-images");
             list.replaceChildren();
+            document.querySelector("#begin-comparison").hidden = true;
             const finish = (camera) => {
               cancelComparison = null;
               dialog.close(); list.replaceChildren(); resolve(camera);
@@ -331,11 +351,23 @@ async function startCamera({ deviceId = cameraSelect?.value || "", allowFallback
     }
     stream = camera.stream;
     const track = stream.getVideoTracks()[0];
+    if (automaticCamera) {
+      let capabilities = {};
+      try { capabilities = track.getCapabilities?.() || {}; } catch {}
+      selectedAutomatic = { ...selectedAutomatic, range: zoomRange(capabilities) };
+    }
     currentDeviceId = track.getSettings?.().deviceId || (camera.fallback ? "" : deviceId);
     currentName = track.label || "名前未取得";
     cameraName.textContent = `カメラ：${currentName}`;
     const facingKnown = track.getSettings?.().facingMode === "environment";
-    request.textContent = `要求：${camera.requested.width.ideal} × ${camera.requested.height.ideal} px（ideal）`;
+    request.textContent = camera.requested.width
+      ? `要求：${camera.requested.width.ideal} × ${camera.requested.height.ideal} px（ideal）`
+      : "要求：ズームを優先し、取得可能な解像度を使用";
+    const diagnostics = document.querySelector("#camera-diagnostics");
+    if (diagnostics) {
+      const zoom = selectedAutomatic?.range;
+      diagnostics.textContent = `カメラ：${currentName}／ズーム：${zoom ? `${zoom.min}〜${zoom.max}×` : "非対応"}／${selectionReason}`;
+    }
     video.srcObject = stream;
     track.addEventListener("ended", () => {
       if (stream === camera.stream) {
@@ -369,36 +401,25 @@ async function startCamera({ deviceId = cameraSelect?.value || "", allowFallback
   } finally {
     starting = false;
     startButton.disabled = Boolean(stream);
+    startButton.hidden = Boolean(stream);
+    startButton.textContent = stream ? "カメラを開始" : "カメラを再開する";
     updateVideoState();
+    if (resumeCamera && !document.hidden && imageScreen.hidden) { resumeCamera = false; void startCamera(); }
   }
 }
 
-startButton.addEventListener("click", () => { void startCamera(); });
+startButton.addEventListener("click", () => { resumeCamera = false; void startCamera(); });
 cameraSelect?.addEventListener("change", () => {
   const deviceId = cameraSelect?.value || "";
   stopCamera();
   void startCamera({ deviceId, allowFallback: false });
 });
 zoomSlider.addEventListener("input", () => { liveZoom?.request(Number(zoomSlider.value)); });
-// iOS Safariの独自ジェスチャーも映像内だけで抑止する。
-for (const type of ["gesturestart", "gesturechange", "gestureend"]) {
-  video.addEventListener(type, (event) => { event.preventDefault(); }, { passive: false });
-}
-video.addEventListener("touchmove", (event) => {
-  if (event.touches.length > 1) event.preventDefault();
-}, { passive: false });
-const pinch = createPinchZoom({ readZoom: () => Number(zoomSlider.value), onZoom: (value) => liveZoom?.request(value) });
-video.addEventListener("pointerdown", (event) => {
-  if (event.pointerType !== "touch" || zoomSlider.disabled || !liveZoom) return;
-  if (pinch.start(event.pointerId, event.clientX, event.clientY)) video.setPointerCapture(event.pointerId);
+const pinch = bindCameraStage(cameraScreen, {
+  active: () => imageScreen.hidden && !cameraScreen.hidden && !document.querySelector("#options-panel")?.open,
+  enabled: () => !zoomSlider.disabled && Boolean(liveZoom),
+  readZoom: () => Number(zoomSlider.value), onZoom: (value) => liveZoom?.request(value),
 });
-video.addEventListener("pointermove", (event) => {
-  if (event.pointerType !== "touch" || zoomSlider.disabled || !liveZoom) return;
-  pinch.move(event.pointerId, event.clientX, event.clientY);
-});
-for (const event of ["pointerup", "pointercancel", "lostpointercapture"]) {
-  video.addEventListener(event, (pointer) => { pinch.end(pointer.pointerId); });
-}
 stopButton.addEventListener("click", () => {
   stopCamera();
   status.textContent = "カメラを停止しました。「カメラを開始」で再開できます。";
@@ -408,6 +429,7 @@ for (const event of ["loadeddata", "playing", "resize", "pause", "waiting"]) {
 }
 
 captureButton.addEventListener("click", () => {
+  if (!imageScreen.hidden || cameraScreen.hidden || captureButton.disabled || starting || document.hidden) return;
   try {
     const capturedAt = Date.now();
     const { width, height } = captureFrame(video, canvas);
@@ -445,11 +467,21 @@ document.querySelector("#back").addEventListener("click", returnToCamera);
 
 document.addEventListener("visibilitychange", () => {
   if (document.hidden) {
+    resumeCamera = imageScreen.hidden && (Boolean(stream) || starting);
     stopCamera();
-    status.textContent = "カメラを停止しました。「カメラを開始」で再開してください。";
+    if (resumeCamera) status.textContent = "前面に戻るとカメラを自動で再開します。";
+  } else if (resumeCamera && imageScreen.hidden && !starting) {
+    resumeCamera = false;
+    void startCamera();
   }
 });
-window.addEventListener("pagehide", stopCamera);
+window.addEventListener("pagehide", () => {
+  resumeCamera ||= imageScreen.hidden && (Boolean(stream) || starting);
+  stopCamera();
+});
+window.addEventListener("pageshow", () => {
+  if (resumeCamera && imageScreen.hidden && !document.hidden && !starting) { resumeCamera = false; void startCamera(); }
+});
 
 const updates = initializeUpdates(() => ({
   cameraActive: starting || Boolean(stream),
