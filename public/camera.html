@@ -25,8 +25,8 @@
           <p id="zoom-status">倍率：カメラ開始後に確認します。</p>
         </header>
         <div class="overlay bottom">
-            <label for="zoom">ズーム</label>
-            <input id="zoom" type="range" min="1" max="1" step="1" value="1" disabled>
+          <label for="zoom">ズーム</label>
+          <input id="zoom" type="range" min="1" max="1" step="1" value="1" disabled>
           <p id="capture-reason" role="status"></p>
           <div class="buttons">
             <button id="start" type="button">カメラを開始</button>
@@ -118,11 +118,11 @@
           <button id="timetable-reset" type="button">入力を取り消す</button>
         </form>
       </section>
-          <p id="resolution">映像：未取得</p>
-          <p id="request">要求：背面カメラ・高解像度</p>
           <details id="camera-options">
             <summary>カメラ情報</summary>
             <p id="camera-diagnostics">カメラ開始後に表示します。</p>
+            <p id="resolution">映像：未取得</p>
+            <p id="request">要求：背面カメラ・高解像度</p>
           </details>
           <p class="note">映像を2本の指で広げると拡大、狭めると縮小できます（ズーム対応時）。</p>
           <p id="preference-status" role="status"></p>
@@ -136,8 +136,8 @@
       <a href="./">ホームに戻る</a>
     </dialog>
     <dialog id="camera-comparison" aria-labelledby="comparison-title">
-      <h2 id="comparison-title">見やすい画像を選んでください</h2>
-      <p>同じ板面を各カメラで撮りました。選択をこの端末に記憶します。画像は保存・送信しません。</p>
+      <h2 id="comparison-title">カメラの撮り比べ</h2>
+      <p>撮り比べると、同じ板面の画像を並べます。見やすい画像を選んでください。選択をこの端末に記憶します。画像は保存・送信しません。</p>
       <p id="comparison-invitation">どのカメラが見やすいか撮り比べます。</p>
       <button id="begin-comparison" type="button">撮り比べる</button>
       <div id="comparison-images"></div>

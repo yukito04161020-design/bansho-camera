@@ -190,7 +190,11 @@ export function createCropEditor({ onChange }) {
         if (current === generation) render("検出を中断しました。画像全体の枠から手動で調整できます。");
       } finally {
         small.width = 0; small.height = 0;
-        if (current === generation) { detecting = false; controller = null; render(); resume(); }
+        if (current === generation) {
+          detecting = false;
+          if (controller?.signal === signal) controller = null;
+          render(); resume();
+        }
       }
     },
     clear() {

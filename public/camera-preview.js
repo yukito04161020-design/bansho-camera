@@ -30,6 +30,7 @@ let automaticCandidates = null;
 let selectedAutomatic = null;
 let requestedMagnification = null;
 let cancelComparison = null;
+let comparisonStream = null;
 let selectionReason = "";
 let resumeCamera = false;
 let stream = null;
@@ -224,6 +225,8 @@ async function keepScreenOn() {
 function stopCamera() {
   generation += 1;
   cancelComparison?.();
+  comparisonStream?.getTracks().forEach((track) => track.stop());
+  comparisonStream = null;
   liveZoom?.dispose();
   liveZoom = null;
   pinch.reset();
@@ -297,7 +300,12 @@ async function startCamera({ deviceId = cameraSelect?.value || "", allowFallback
         status.textContent = "見やすいカメラを撮り比べています。板面に向けたままお待ちください。";
         selectedAutomatic = await compareCameras(decision.candidates, {
           active,
-          open: (candidate) => openSelectedCamera(navigator.mediaDevices, candidate.deviceId, false),
+          open: async (candidate) => {
+            const opened = await openSelectedCamera(navigator.mediaDevices, candidate.deviceId, false);
+            if (active()) comparisonStream = opened.stream;
+            else opened.stream.getTracks().forEach((track) => track.stop());
+            return opened;
+          },
           capture: async (opened, candidate) => {
             await setCameraMagnification(opened.stream.getVideoTracks()[0], candidate, requestedMagnification);
             video.srcObject = null;
