@@ -60,3 +60,7 @@
 #options-panel, .review-header { overflow-wrap: anywhere; }
 /* iOSのテキストサイズに追従する。非対応ブラウザは既存のフォント設定を使う。 */
 :root { font: -apple-system-body; }
+
+#timetable-import { margin: 1rem 0; }
+#timetable-import textarea { width: 100%; box-sizing: border-box; font: inherit; margin: 0.5rem 0; }
+#timetable-import li { overflow-wrap: anywhere; }

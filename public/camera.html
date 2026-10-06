@@ -114,6 +114,25 @@
         <p id="timetable-status" role="status">時間割を読み込んでいます。</p>
         <p id="timetable-empty">時間割はまだありません。</p>
         <ul id="timetable-list"></ul>
+        <details id="timetable-import">
+          <summary>まとめて読み込む</summary>
+          <p>依頼文と時間割のスクリーンショットをClaudeやChatGPTに送り、返ってきたテキストを貼り付けてください。</p>
+          <button id="import-copy" type="button">AIへの依頼文をコピー</button>
+          <textarea id="import-prompt" readonly hidden aria-label="コピーする依頼文" rows="8"></textarea>
+          <label for="import-text">AIの返した時間割テキスト</label>
+          <textarea id="import-text" rows="8" placeholder="月 1限 架空の授業A&#10;土 18:00-19:30 架空の授業B"></textarea>
+          <p>1行に1コマ、曜日・時限（1〜7限）またはHH:MM-HH:MM・授業名の順で入力します。空行と#で始まる行は無視します。時刻は日本時間です。</p>
+          <button id="import-check" type="button">確認する</button>
+          <p id="import-status" role="status"></p>
+          <section id="import-preview" hidden aria-label="読み込み内容の確認">
+            <h4>読み込める行</h4>
+            <ul id="import-valid"></ul>
+            <h4>読めなかった行</h4>
+            <ul id="import-errors"></ul>
+            <button id="import-add" type="button" disabled>今の時間割に追加</button>
+            <button id="import-replace" type="button" disabled>今の時間割を置き換え</button>
+          </section>
+        </details>
         <form id="timetable-form">
           <label for="timetable-day">曜日</label>
           <select id="timetable-day" name="day"><option value="1">月</option><option value="2">火</option><option value="3">水</option><option value="4">木</option><option value="5">金</option><option value="6">土</option><option value="7">日</option></select>
