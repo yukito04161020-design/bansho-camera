@@ -1,3 +1,5 @@
+import { config } from "./config.js";
+import { captureSharpestFrame } from "./sharpest-frame.js";
 import { bindCameraStage } from "./camera-stage.js";
 import { discoverCameras, chooseCamera, readChoices, rememberChoice, compareCameras, setCameraMagnification } from "./auto-camera.js";
 import { captureDisabledReason } from "./capture-save.js";
@@ -39,6 +41,7 @@ let generation = 0;
 let starting = false;
 let zoomApplying = false;
 let liveZoom = null;
+let captureController = null;
 let captureBlocked = false;
 let operationActive = false;
 export function setCaptureBlocked(value) { captureBlocked = value; updateVideoState(); }
@@ -186,11 +189,11 @@ function updateVideoState() {
   const track = stream?.getVideoTracks()[0];
   const ready = Boolean(!starting && !document.hidden && track && track.readyState === "live" && !track.muted &&
     !video.paused && video.readyState >= 2 && video.videoWidth > 0 && video.videoHeight > 0);
-  const reason = captureDisabledReason({ starting, hidden: document.hidden, ready, zoomApplying, blocked: captureBlocked });
+  const reason = captureDisabledReason({ starting, hidden: document.hidden, ready, zoomApplying, blocked: captureController ? "撮影中…" : captureBlocked });
   captureButton.disabled = Boolean(reason);
   const explanation = document.querySelector("#capture-reason");
   if (explanation) { explanation.textContent = reason; explanation.hidden = !reason; }
-  zoomSlider.disabled = !ready || !range || range.max <= range.min;
+  zoomSlider.disabled = Boolean(captureController) || !ready || !range || range.max <= range.min;
   video.classList.toggle("zoom-enabled", !zoomSlider.disabled);
   if (cameraSelect) cameraSelect.disabled = starting || cameraSelect.options.length <= 1;
   if (ready) resolution.textContent = `映像：${video.videoWidth} × ${video.videoHeight} px`;
@@ -223,6 +226,7 @@ async function keepScreenOn() {
 }
 
 function stopCamera() {
+  captureController?.abort();
   generation += 1;
   cancelComparison?.();
   comparisonStream?.getTracks().forEach((track) => track.stop());
@@ -383,7 +387,7 @@ async function startCamera({ deviceId = cameraSelect?.value || "", allowFallback
         status.textContent = "カメラが停止しました。「カメラを開始」で再開してください。";
       }
     });
-    track.addEventListener("mute", updateVideoState);
+    track.addEventListener("mute", () => { captureController?.abort(); updateVideoState(); });
     track.addEventListener("unmute", updateVideoState);
     await video.play();
     if (current !== generation) return;
@@ -436,11 +440,26 @@ for (const event of ["loadeddata", "playing", "resize", "pause", "waiting"]) {
   video.addEventListener(event, updateVideoState);
 }
 
-captureButton.addEventListener("click", () => {
-  if (!imageScreen.hidden || cameraScreen.hidden || captureButton.disabled || starting || document.hidden) return;
+captureButton.addEventListener("click", async () => {
+  if (!imageScreen.hidden || cameraScreen.hidden || captureButton.disabled || captureController || starting || document.hidden) return;
+  const controller = new AbortController();
+  captureController = controller;
+  const current = generation;
+  status.textContent = "撮影中…";
+  updateVideoState();
   try {
     const capturedAt = Date.now();
-    const { width, height } = captureFrame(video, canvas);
+    const result = await captureSharpestFrame({ video, output: canvas, settings: config.sharpestFrame,
+      signal: controller.signal, active: () => {
+        const track = stream?.getVideoTracks()[0];
+        return current === generation && !document.hidden && track?.readyState === "live" && !track.muted && !video.paused;
+      } });
+    const diagnostics = document.querySelector("#capture-diagnostics");
+    if (diagnostics) diagnostics.textContent = result.fallback
+      ? "直前の撮影：0コマ／押した瞬間の1コマを採用／鮮明さ：計測なし"
+      : `直前の撮影：${result.count}コマ／${result.selected}コマ目を採用／鮮明さ 最小：${result.min.toFixed(2)}・最大：${result.max.toFixed(2)}`;
+    const { width, height } = canvas;
+    captureController = null;
     document.querySelector("#image-resolution").textContent = `撮影画像：${width} × ${height} px`;
     document.querySelector("#image-camera").textContent = `カメラ：${currentName}／${zoomStatus.textContent}`;
     stopCamera();
@@ -449,7 +468,12 @@ captureButton.addEventListener("click", () => {
     sizeButton.focus();
     document.dispatchEvent(new CustomEvent("bansho-captured", { detail: { capturedAt } }));
   } catch (error) {
-    status.textContent = "画像を切り出せませんでした。映像が動いていることを確認して再試行してください。";
+    if (error.name === "AbortError") {
+      status.textContent = "撮影を中止しました。カメラの再開後に撮り直してください。";
+    } else status.textContent = "画像を切り出せませんでした。映像が動いていることを確認して再試行してください。";
+  } finally {
+    if (captureController === controller) captureController = null;
+    updateVideoState();
   }
 });
 

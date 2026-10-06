@@ -177,3 +177,26 @@ test("開始待ちの間に裏へ移ってすぐ戻っても自動再開し、�
     assert.equal(env.element("start").textContent, "カメラを再開する");
   } finally { env.visibility(true); await pause(); env.restore(); }
 });
+
+
+test("複数コマ撮影中は理由を表示して操作を止め、hiddenでは確認画面へ進まず撮り直せる", async () => {
+  const env = environment(); const $ = env.element;
+  try {
+    await import("../public/camera-preview.js?sharpest-hidden-test");
+    $("start").click(); await until(() => !$("capture").disabled);
+    $("capture").click();
+    assert.equal($("capture").disabled, true);
+    assert.equal($("capture-reason").textContent, "撮影中…");
+    assert.equal($("zoom").disabled, true);
+    // 待機が終わって最初のコマが取得されてから中断する。
+    await until(() => env.cuts() >= 2);
+    env.visibility(true);
+    await until(() => $("image").width === 0);
+    assert.equal($("image-screen").hidden, true);
+    assert.equal($("camera-screen").hidden, false);
+    env.visibility(false); await until(() => !$("capture").disabled);
+    $("capture").click();
+    await until(() => !$("image-screen").hidden);
+    assert.match($("capture-diagnostics").textContent, /8コマ.*1コマ目.*最小.*最大/);
+  } finally { env.visibility(true); await pause(); env.restore(); }
+});
