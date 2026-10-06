@@ -1,3 +1,4 @@
+import { cropLayout, magnifierLayout, CROP_MARGIN } from "./crop-layout.js";
 import { detectCorners, detectionSize } from "./corner-detect.js";
 import { CropState, CropError, rectifyRows } from "./crop-logic.js";
 
@@ -13,10 +14,54 @@ export function createCropEditor({ onChange }) {
   let detecting = false;
   let generation = 0;
   let interrupted = null;
+  function hideMagnifier() { $("crop-magnifier").hidden = true; }
+  function layout() {
+    if (!state.source) return;
+    const area = $("image-area");
+    const style = window.getComputedStyle(area);
+    const safeArea = Object.fromEntries(Object.entries(CROP_MARGIN).map(([edge, margin]) =>
+      [edge, Math.max(0, parseFloat(style[`padding${edge[0].toUpperCase()}${edge.slice(1)}`]) - margin)]));
+    const source = showingResult ? state.result : state.source;
+    if (!source) return;
+    const target = showingResult ? $("cropped-image") : $("image-stage");
+    if (showingResult && area.classList.contains("actual-size")) {
+      for (const key of ["left", "top", "width", "height"]) target.style[key] = "";
+      return;
+    }
+    area.scrollTo(0, 0);
+    const rect = cropLayout({ width: area.clientWidth, height: area.clientHeight,
+      imageWidth: source.width, imageHeight: source.height, safeArea });
+    for (const key of ["left", "top", "width", "height"]) target.style[key] = `${rect[key]}px`;
+  }
+  function magnify(event) {
+    if (!drag || !state.source) return;
+    const lens = $("crop-magnifier");
+    const viewport = window.visualViewport;
+    const width = viewport?.width || window.innerWidth;
+    const height = viewport?.height || window.innerHeight;
+    const offsetLeft = viewport?.offsetLeft || 0, offsetTop = viewport?.offsetTop || 0;
+    const rect = magnifierLayout({ x: event.clientX - offsetLeft, y: event.clientY - offsetTop, width, height });
+    lens.style.left = `${rect.left + offsetLeft}px`; lens.style.top = `${rect.top + offsetTop}px`;
+    lens.style.width = `${rect.size}px`; lens.style.height = `${rect.size}px`;
+    lens.hidden = false;
+    const point = state.corners[drag.index];
+    const bounds = $("image").getBoundingClientRect();
+    const zoom = 3 * bounds.width / state.source.width;
+    const context = lens.getContext("2d");
+    context.clearRect(0, 0, 104, 104);
+    context.drawImage(state.source, 52 - point.x * zoom, 52 - point.y * zoom,
+      state.source.width * zoom, state.source.height * zoom);
+    context.strokeStyle = "#ffda78"; context.lineWidth = 1;
+    context.beginPath(); context.moveTo(42, 52); context.lineTo(62, 52);
+    context.moveTo(52, 42); context.lineTo(52, 62); context.stroke();
+  }
+  new ResizeObserver(() => { hideMagnifier(); layout(); }).observe($("image-area"));
+  $("actual-size").addEventListener("click", () => window.setTimeout(layout, 0));
   function suspend() {
     if (detecting || state.busy) interrupted = detecting ? "detect" : "preview";
     controller?.abort();
     drag = null;
+    hideMagnifier();
   }
   function resume() {
     if (document.hidden || detecting || state.busy || !interrupted || !state.source) return;
@@ -54,6 +99,8 @@ export function createCropEditor({ onChange }) {
     $("crop-hint").textContent = showingResult ? "保存される補正画像です。等倍で文字を確認できます。"
       : "四隅の丸を板面に合わせて動かし、「補正して確認」を押してください。自動検出の枠が合わない場合は手動で調整できます。";
     if (message) $("crop-status").textContent = message;
+    layout();
+    if (showingResult || locked || !state.source) hideMagnifier();
     onChange();
   }
   function invalidate(points) {
@@ -77,6 +124,7 @@ export function createCropEditor({ onChange }) {
       drag = { id: event.pointerId, index };
       button.setPointerCapture(event.pointerId);
       render();
+      magnify(event);
       event.preventDefault();
     });
     button.addEventListener("pointermove", (event) => {
@@ -85,9 +133,10 @@ export function createCropEditor({ onChange }) {
       if (!bounds.width || !bounds.height) return;
       move(index, (event.clientX - bounds.left) / bounds.width * (state.source.width - 1),
         (event.clientY - bounds.top) / bounds.height * (state.source.height - 1));
+      magnify(event);
     });
     for (const event of ["pointerup", "pointercancel", "lostpointercapture"]) {
-      button.addEventListener(event, () => { drag = null; });
+      button.addEventListener(event, () => { drag = null; hideMagnifier(); });
     }
     button.addEventListener("click", () => { selected = index; render(); });
     button.addEventListener("keydown", (event) => {
@@ -151,9 +200,11 @@ export function createCropEditor({ onChange }) {
     get busy() { return state.busy || detecting; },
     get savable() { return state.savable && showingResult; },
     get canvas() { return state.result; },
-    setLocked(value) { locked = Boolean(value); lockControls(); },
+    setLocked(value) { locked = Boolean(value); if (locked) { drag = null; hideMagnifier(); } lockControls(); },
     async begin(source, { restore = false } = {}) {
       interrupted = null;
+      drag = null;
+      hideMagnifier();
       controller?.abort();
       const current = ++generation;
       if (!restore) { state.begin(source); selected = 0; }
@@ -204,6 +255,7 @@ export function createCropEditor({ onChange }) {
       controller?.abort();
       state.clear();
       drag = null;
+      hideMagnifier();
       showingResult = false;
       $("cropped-image").width = 0;
       $("cropped-image").height = 0;

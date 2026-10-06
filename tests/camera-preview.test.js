@@ -15,6 +15,7 @@ function environment(devices = [{ deviceId: "dual", label: "背面デュアル�
     constructor(id) {
       super(); this.id = id; this.hidden = false; this.open = false; this.disabled = false;
       this.value = ""; this.textContent = ""; this.width = 80; this.height = 60; this.children = [];
+      this.clientWidth = 800; this.clientHeight = 400;
       this.style = { setProperty() {} };
       const classes = new Set();
       this.classList = { add: value => classes.add(value), remove: value => classes.delete(value),
@@ -53,6 +54,7 @@ function environment(devices = [{ deviceId: "dual", label: "背面デュアル�
     }, createElement: type => new Element(type), head: new Element("head") });
   const win = new EventTarget();
   Object.assign(win, { isSecureContext: true, localStorage: { getItem: () => null, setItem() {} },
+    getComputedStyle() { return { paddingTop: "24px", paddingRight: "24px", paddingBottom: "32px", paddingLeft: "24px" }; },
     setTimeout, setInterval() {} });
   const nav = { onLine: false, mediaDevices: {
     enumerateDevices: async () => devices.map(d => ({ ...d, kind: "videoinput" })),
@@ -70,9 +72,9 @@ function environment(devices = [{ deviceId: "dual", label: "背面デュアル�
       return { getVideoTracks: () => [track], getTracks: () => [track] };
     },
   } };
-  const originals = new Map(["document", "window", "navigator", "indexedDB", "ImageData", "requestAnimationFrame", "cancelAnimationFrame"]
+  const originals = new Map(["document", "window", "navigator", "indexedDB", "ImageData", "requestAnimationFrame", "cancelAnimationFrame", "ResizeObserver"]
     .map(key => [key, Object.getOwnPropertyDescriptor(globalThis, key)]));
-  const globals = { document: doc, window: win, navigator: nav, indexedDB: new IDBFactory(),
+  const globals = { ResizeObserver: class { observe() {} }, document: doc, window: win, navigator: nav, indexedDB: new IDBFactory(),
     ImageData: class { constructor(data, width, height) { Object.assign(this, { data, width, height }); } },
     requestAnimationFrame: callback => setTimeout(callback, 0), cancelAnimationFrame: clearTimeout };
   for (const [key, value] of Object.entries(globals)) Object.defineProperty(globalThis, key, { configurable: true, writable: true, value });
@@ -139,7 +141,8 @@ test("撮影画面は倍率を戻して自動再開し、確認中は画像・�
     assert.equal($("image-destination").textContent, destination);
     assert.equal($("session-number").value, "7");
     assert.equal($("image-screen").hidden, false); assert.equal($("camera-screen").hidden, true);
-    assert.equal($("image-area").scrollLeft, 15); assert.equal($("image-area").scrollTop, 20);
+    // 調整中の画像は等倍切り替え後も領域内へ収め、つまみを画面外へ出さない。
+    assert.equal($("image-area").scrollLeft, 0); assert.equal($("image-area").scrollTop, 0);
     assert.equal(env.cuts(), cuts); assert.equal(env.requests.length, opens);
     assert.equal($("camera-comparison").open, false);
   } finally { env.visibility(true); await pause(); store.close(); env.restore(); }

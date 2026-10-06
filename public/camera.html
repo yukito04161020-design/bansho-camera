@@ -69,6 +69,7 @@
           </details>
         </header>
         <div id="image-area" class="image-area" tabindex="0" aria-label="撮影画像。等倍ではスクロールできます。">
+          <canvas id="crop-magnifier" width="104" height="104" hidden aria-hidden="true"></canvas>
           <div id="image-stage">
             <canvas id="image" aria-label="カメラ映像から切り出した画像"></canvas>
             <svg id="crop-overlay" aria-hidden="true" preserveAspectRatio="none"><polygon id="crop-outline"></polygon></svg>
