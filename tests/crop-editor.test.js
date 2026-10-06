@@ -35,13 +35,16 @@ function environment() {
   return { element, doc, listeners, restore() { for (const [k, v] of originals) { if (v === undefined) delete globalThis[k]; else globalThis[k] = v; } } };
 }
 
-test("確認画面開始で検出と補正プレビューが自動完了し、再調整・再補正できる", async () => {
+test("確認画面開始で検出後に調整を表示し、保存前に補正して、再調整・再補正できる", async () => {
   const env = environment();
   try {
     const editor = createCropEditor({ onChange() {} });
     const pending = editor.begin(env.element("image"));
     assert.equal(editor.busy, true); assert.equal(editor.savable, false);
     await pending;
+    assert.equal(editor.ready, true); assert.equal(editor.savable, false);
+    assert.equal(env.element("image-stage").hidden, false);
+    await editor.prepareSave();
     assert.equal(editor.busy, false); assert.equal(editor.savable, true);
     assert.ok(editor.canvas.width < 80); assert.ok(editor.canvas.height < 60);
     assert.equal(env.element("image-stage").hidden, true);
@@ -80,7 +83,7 @@ async function settled(editor) {
   assert.fail("画像処理が完了しませんでした。");
 }
 
-test("検出途中で裏へ移った場合は元画像を保持し、前面復帰後に検出と補正をやり直す", async () => {
+test("検出途中で裏へ移った場合は元画像を保持し、前面復帰後に検出と調整画面を戻す", async () => {
   const env = environment();
   try {
     const editor = createCropEditor({ onChange() {} });
@@ -92,8 +95,9 @@ test("検出途中で裏へ移った場合は元画像を保持し、前面復�
     assert.equal(editor.savable, false);
     env.doc.hidden = false; env.listeners.get("visibilitychange")();
     await settled(editor);
-    assert.equal(editor.savable, true);
-    assert.equal(env.element("image-stage").hidden, true);
+    assert.equal(editor.ready, true);
+    assert.equal(editor.savable, false);
+    assert.equal(env.element("image-stage").hidden, false);
     editor.clear();
   } finally { env.restore(); }
 });
@@ -169,6 +173,7 @@ test("補正画像の等倍確認から調整へ戻ると表示を収め、ス�
   try {
     const editor = createCropEditor({ onChange() {} });
     await editor.begin(env.element("image"));
+    await editor.prepareSave();
     const area = env.element("image-area");
     area.classList.actual = true;
     env.element("actual-size").events.get("click")();

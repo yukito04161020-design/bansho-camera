@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-    <meta name="theme-color" content="#164e46">
+    <meta name="theme-color" content="#000000">
     <meta name="app-version" content="development">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="default">
@@ -18,99 +18,80 @@
     <main>
       <section id="camera-screen" class="screen" aria-label="板書の撮影">
         <video id="camera" autoplay muted playsinline aria-label="背面カメラの映像"></video>
+        <svg id="live-outline" aria-hidden="true" preserveAspectRatio="none"><polygon/></svg>
         <header class="overlay top">
-
-          <button id="destination-status" type="button" aria-controls="options-panel" aria-expanded="false">保存先を準備しています。</button>
-          <p id="camera-name">カメラ：未取得</p>
-          <p id="zoom-status">倍率：カメラ開始後に確認します。</p>
+          <button id="login-icon" type="button" aria-label="Googleにログイン"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 22v-3a8 8 0 0 1 16 0v3"/><path id="login-warning" d="M20 2v5m0 2v1"/></svg></button>
+          <button id="destination-status" type="button" aria-label="授業と回を選ぶ" aria-controls="options-panel" aria-expanded="false">授業を選ぶ</button>
+          <button id="queue-icon" type="button" aria-label="送信の状態を確認"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 18h12a4 4 0 0 0 0-8 6 6 0 0 0-11-2 5 5 0 0 0-1 10Z"/></svg><span id="queue-badge">0</span></button>
         </header>
+        <div id="toast" role="status" hidden></div>
+        <div id="camera-start"><button id="start" type="button" aria-label="カメラを開始">カメラを開始</button><p>カメラの使用を許可してください。</p></div>
         <div class="overlay bottom">
-          <label for="zoom">ズーム</label>
-          <input id="zoom" type="range" min="1" max="1" step="1" value="1" disabled>
+          <div id="zoom-buttons" aria-label="撮影倍率"></div>
+          <input id="zoom" aria-label="細かい撮影倍率" type="range" min="1" max="1" step="1" value="1" disabled hidden>
           <p id="capture-reason" role="status"></p>
-          <div class="buttons">
-            <button id="start" type="button">カメラを開始</button>
-            <button id="capture" aria-describedby="capture-reason" type="button" disabled>撮影</button>
+          <div class="shutter-row">
+            <button id="last-image" type="button" aria-label="直前の撮影画像を確認" disabled><canvas id="thumbnail" width="64" height="64"></canvas><span id="thumbnail-pending" hidden>•</span></button>
+            <button id="capture" aria-label="板書を撮影" aria-describedby="capture-reason" type="button" disabled><span class="sr-only">撮影</span></button>
+            <button id="open-options" type="button" aria-label="設定を開く" aria-controls="options-panel"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 3 6 0 1 3 3 1 2 5-2 5-3 1-1 3H9l-1-3-3-1-2-5 2-5 3-1Z"/><circle cx="12" cy="12" r="4"/></svg><span id="update-dot" hidden>•</span></button>
           </div>
-
-          <p class="transfer" data-pending-count>送信待ち：確認中</p>
-          <button id="open-options" type="button" aria-controls="options-panel">設定を開く</button>
         </div>
+        <p id="camera-name" hidden></p><p id="zoom-status" hidden></p>
       </section>
       <section id="image-screen" class="screen review" aria-label="撮影画像の確認" hidden>
         <header class="review-header">
-          <h1>撮影画像の確認</h1>
-          <p id="image-resolution"></p>
-          <p id="image-camera"></p>
-          <p id="image-destination"></p>
-          <p class="transfer" data-pending-count>送信待ち：確認中</p>
-          <p class="transfer" data-transfer-status role="status"></p>
-          <p class="version">版：<span data-app-version>開発版</span></p>
-          <p class="version" data-update-status role="status"></p>
-          <div class="buttons">
-            <button id="actual-size" type="button" aria-pressed="false">等倍で確認</button>
-            <button id="crop-preview" type="button">補正して確認</button>
-            <button id="crop-edit" type="button" disabled>四隅の調整に戻る</button>
-            <button id="crop-reset" type="button">画像全体に戻す</button>
-            <button id="crop-cancel" type="button" hidden>補正を中断</button>
-            <button id="review-options" type="button" aria-controls="options-panel">授業と保存先を選ぶ</button>
-            <button id="save-image" type="button" disabled>保存して次の撮影</button>
-            <button id="back" type="button">保存せず撮り直す</button>
-          </div>
-          <p id="save-status" role="status">確認したら保存してください。</p>
-          <p id="crop-hint">四隅を板面に合わせ、補正後の画像を確認して保存します。</p>
-          <p id="crop-status" role="status"></p>
-          <details>
-            <summary>四隅の位置を微調整</summary>
-            <label for="corner-selection">動かす隅</label>
-            <select id="corner-selection"><option value="0">左上</option><option value="1">右上</option><option value="2">右下</option><option value="3">左下</option></select>
-            <button id="crop-nudge" type="button">選んだ隅を少し内側へ</button>
-            <p>丸を選び、キーボードの矢印でも動かせます。</p>
-          </details>
+          <div class="review-top"><button id="back" type="button" aria-label="保存せず撮り直す">撮り直す</button><button id="review-options" type="button" aria-label="授業と回を変更" aria-controls="options-panel">授業を選ぶ</button><button id="actual-size" type="button" aria-label="画像を等倍で確認" aria-pressed="false"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10" cy="10" r="7"/><path d="m15 15 7 7M6 10h8m-4-4v8"/></svg><span>等倍</span></button><button id="image-info" type="button" aria-label="画像の情報を表示" aria-expanded="false"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 10v7m0-11v1"/></svg></button></div>
+          <div class="review-actions"><button id="crop-auto" type="button" aria-label="四隅を自動検出し直す"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 3H3v5m13-5h5v5M3 16v5h5m8 0h5v-5M8 12h8m-4-4v8"/></svg><span>自動</span></button><button id="crop-reset" type="button" aria-label="画像全体を枠にする"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 3h18v18H3Z"/></svg><span>全体</span></button><button id="crop-preview" type="button" aria-label="補正プレビューを切り替える"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/></svg><span>プレビュー</span></button><button id="save-image" type="button" aria-label="補正して保存">保存</button></div>
+
+          <div id="image-info-panel" hidden><p id="image-resolution"></p><p id="image-camera"></p><p id="image-destination"></p><label for="corner-selection">動かす隅</label><select id="corner-selection"><option value="0">左上</option><option value="1">右上</option><option value="2">右下</option><option value="3">左下</option></select><button id="crop-nudge" type="button" aria-label="選んだ隅を少し内側へ">選んだ隅を少し内側へ</button></div>
+          <div id="review-toast" role="status" hidden></div><p id="save-status" class="sr-only" role="status"></p><p id="crop-status" class="sr-only" role="status"></p><p id="crop-hint" hidden></p>
+          <button id="crop-edit" type="button" hidden aria-label="調整に戻る">調整に戻る</button><button id="crop-cancel" type="button" hidden aria-label="補正を中断">補正を中断</button>
         </header>
         <div id="image-area" class="image-area" tabindex="0" aria-label="撮影画像。等倍ではスクロールできます。">
           <canvas id="crop-magnifier" width="104" height="104" hidden aria-hidden="true"></canvas>
           <div id="image-stage">
             <canvas id="image" aria-label="カメラ映像から切り出した画像"></canvas>
             <svg id="crop-overlay" aria-hidden="true" preserveAspectRatio="none"><polygon id="crop-outline"></polygon></svg>
-            <button type="button" class="crop-corner" data-corner="0" aria-label="左上の四隅調整">左上</button>
-            <button type="button" class="crop-corner" data-corner="1" aria-label="右上の四隅調整">右上</button>
-            <button type="button" class="crop-corner" data-corner="2" aria-label="右下の四隅調整">右下</button>
-            <button type="button" class="crop-corner" data-corner="3" aria-label="左下の四隅調整">左下</button>
+            <button type="button" class="crop-corner" data-corner="0" aria-label="左上の四隅調整"></button>
+            <button type="button" class="crop-corner" data-corner="1" aria-label="右上の四隅調整"></button>
+            <button type="button" class="crop-corner" data-corner="2" aria-label="右下の四隅調整"></button>
+            <button type="button" class="crop-corner" data-corner="3" aria-label="左下の四隅調整"></button>
           </div>
           <canvas id="cropped-image" aria-label="保存する補正後の画像" hidden></canvas>
         </div>
       </section>
     </main>
     <dialog id="options-panel" aria-labelledby="options-title">
-      <h2 id="options-title">授業・保存先とカメラ設定</h2>
-      <button id="close-options" type="button">設定を閉じる</button>
-          <details id="save-options">
-            <summary>授業と保存先を変更</summary>
-            <p id="auth-status" role="status">Googleログインを準備しています。</p>
-            <div class="buttons">
-              <button id="google-login" type="button" disabled>Googleでログイン</button>
-              <button id="cancel-login" type="button" hidden>ログイン待ちを中断</button>
-            </div>
+      <div id="sheet-grip" aria-hidden="true"><span></span></div>
+      <header class="sheet-header"><button id="settings-back" type="button" hidden aria-label="戻る">戻る</button><h2 id="options-title">設定</h2><button id="close-options" type="button" aria-label="設定を閉じる">完了</button></header>
+      <nav id="settings-menu" aria-label="設定項目"><button data-settings-page="save-options" aria-label="授業と保存先 選択 ›">授業と保存先 <span><span id="settings-destination">未選択</span> ›</span></button><button id="open-timetable" type="button" disabled aria-controls="timetable-panel" aria-label="時間割 編集 ›">時間割 <span><span id="settings-timetable">編集</span> ›</span></button><button data-settings-page="account-options" aria-label="Googleアカウント ログイン ›">Googleアカウント <span><span id="settings-account">未ログイン</span> ›</span></button><button data-settings-page="camera-options" aria-label="撮影 カメラ情報 ›">撮影 <span><span id="settings-camera">未開始</span> ›</span></button><button data-settings-page="app-options" aria-label="アプリ 版・更新 ›">アプリ <span><span id="settings-app">更新状態</span> ›</span></button></nav>
+          <section id="save-options" data-settings-detail hidden>
+            <h3>授業と保存先</h3><p id="destination-message" role="status"></p>
             <label for="class-name">授業名（一覧から選ぶか入力）</label>
             <input id="class-name" type="text" list="class-list" autocomplete="off">
             <datalist id="class-list"></datalist>
-            <button id="apply-class" type="button" disabled>この授業を使う</button>
+            <button id="apply-class" type="button" disabled aria-label="この授業を使う">この授業を使う</button>
             <label for="session-number">回数の手動変更（空欄なら自動）</label>
             <input id="session-number" type="number" min="1" step="1" inputmode="numeric" placeholder="自動">
-            <button id="refresh-folders" type="button" disabled>ドライブの一覧を再取得</button>
-          </details>
-          <section id="camera-options" aria-labelledby="camera-info-title">
-            <h3 id="camera-info-title">カメラ情報</h3>
+            <button id="refresh-folders" type="button" disabled aria-label="ドライブの一覧を再取得">ドライブの一覧を再取得</button>
+          </section>
+          <section id="account-options" data-settings-detail hidden>            <p id="auth-status" role="status">Googleログインを準備しています。</p>
+            <div class="buttons">
+              <button id="google-login" type="button" disabled aria-label="Googleでログイン">Googleでログイン</button>
+              <button id="cancel-login" type="button" hidden aria-label="ログイン待ちを中断">ログイン待ちを中断</button>
+            </div>
+</section>
+          <section id="camera-options" data-settings-detail hidden aria-labelledby="camera-info-title">
+            <h3 id="camera-info-title">撮影</h3><label><input id="overlay-enabled" type="checkbox" checked> 板面の枠を表示</label>
             <p id="capture-diagnostics">撮影結果はまだありません。</p>
             <p id="camera-diagnostics">カメラ開始後に表示します。</p>
             <p id="resolution">映像：未取得</p>
-            <p id="request">要求：背面カメラ・高解像度</p>
+            <p id="request">要求：背面カメラ・高解像度</p><button id="stop" type="button" disabled aria-label="カメラを停止">カメラを停止</button>
           </section>
-      <button id="open-timetable" type="button" disabled aria-controls="timetable-panel">時間割を編集</button>
-      <section id="timetable-panel" hidden aria-labelledby="timetable-title">
+
+      <section id="timetable-panel" data-settings-detail hidden aria-labelledby="timetable-title">
         <h3 id="timetable-title">時間割（日本時間）</h3>
-        <button id="close-timetable" type="button">時間割を閉じる</button>
+        <button id="close-timetable" type="button" aria-label="時間割を閉じる">時間割を閉じる</button>
         <p>開始10分前〜終了10分後に授業を自動選択します。重なる場合は授業本来の時間を優先し、決まらなければ未判定です。</p>
         <p id="timetable-status" role="status">時間割を読み込んでいます。</p>
         <p id="timetable-empty">時間割はまだありません。</p>
@@ -118,20 +99,20 @@
         <details id="timetable-import">
           <summary>まとめて読み込む</summary>
           <p>依頼文と時間割のスクリーンショットをClaudeやChatGPTに送り、返ってきたテキストを貼り付けてください。</p>
-          <button id="import-copy" type="button">AIへの依頼文をコピー</button>
+          <button id="import-copy" type="button" aria-label="AIへの依頼文をコピー">AIへの依頼文をコピー</button>
           <textarea id="import-prompt" readonly hidden aria-label="コピーする依頼文" rows="8"></textarea>
           <label for="import-text">AIの返した時間割テキスト</label>
           <textarea id="import-text" rows="8" placeholder="月 1限 架空の授業A&#10;土 18:00-19:30 架空の授業B"></textarea>
           <p>1行に1コマ、曜日・時限（1〜7限）またはHH:MM-HH:MM・授業名の順で入力します。空行と#で始まる行は無視します。時刻は日本時間です。</p>
-          <button id="import-check" type="button">確認する</button>
+          <button id="import-check" type="button" aria-label="確認する">確認する</button>
           <p id="import-status" role="status"></p>
           <section id="import-preview" hidden aria-label="読み込み内容の確認">
             <h4>読み込める行</h4>
             <ul id="import-valid"></ul>
             <h4>読めなかった行</h4>
             <ul id="import-errors"></ul>
-            <button id="import-add" type="button" disabled>今の時間割に追加</button>
-            <button id="import-replace" type="button" disabled>今の時間割を置き換え</button>
+            <button id="import-add" type="button" disabled aria-label="今の時間割に追加">今の時間割に追加</button>
+            <button id="import-replace" type="button" disabled aria-label="今の時間割を置き換え">今の時間割を置き換え</button>
           </section>
         </details>
         <form id="timetable-form">
@@ -142,27 +123,20 @@
           <label for="timetable-class">授業名</label><input id="timetable-class" name="className" required autocomplete="off" list="class-list">
           <label for="timetable-start">開始時刻</label><input id="timetable-start" name="start" type="time" required step="60">
           <label for="timetable-end">終了時刻</label><input id="timetable-end" name="end" type="time" required step="60">
-          <button id="timetable-submit" type="submit">時間割を追加</button>
-          <button id="timetable-reset" type="button">入力を取り消す</button>
+          <button id="timetable-submit" type="submit" aria-label="時間割を追加">時間割を追加</button>
+          <button id="timetable-reset" type="button" aria-label="入力を取り消す">入力を取り消す</button>
         </form>
       </section>
 
-          <p class="note">映像を2本の指で広げると拡大、狭めると縮小できます（ズーム対応時）。</p>
-          <p id="preference-status" role="status"></p>
-          <p class="version">版：<span data-app-version>開発版</span></p>
-          <p class="version" data-update-status role="status"></p>
-      <p id="status" role="status">「カメラを開始」を押し、カメラの使用を許可してください。</p>
-      <button id="stop" type="button" disabled>カメラを停止</button>
-      <p class="transfer" data-transfer-status role="status"></p>
-      <p id="wake-status"></p>
-      <button id="retry-upload" type="button" disabled>送信を再開する</button>
-      <a href="./">ホームに戻る</a>
+      <section id="app-options" data-settings-detail hidden><h3>アプリ</h3><p class="version">版：<span data-app-version>開発版</span></p><p data-update-status role="status"></p><a href="./">ホームに戻る</a></section>
+      <div class="sr-only"><p id="preference-status"></p><p id="status" role="status"></p><p id="wake-status"></p></div>
+      <section id="transfer-options" data-settings-detail hidden><p data-pending-count></p><p data-transfer-status role="status"></p><button id="retry-upload" type="button" disabled aria-label="送信を再開する">送信を再開する</button></section>
     </dialog>
     <dialog id="camera-comparison" aria-labelledby="comparison-title">
       <h2 id="comparison-title">カメラの撮り比べ</h2>
       <p>撮り比べると、同じ板面の画像を並べます。見やすい画像を選んでください。選択をこの端末に記憶します。画像は保存・送信しません。</p>
       <p id="comparison-invitation">どのカメラが見やすいか撮り比べます。</p>
-      <button id="begin-comparison" type="button">撮り比べる</button>
+      <button id="begin-comparison" type="button" aria-label="撮り比べる">撮り比べる</button>
       <div id="comparison-images"></div>
     </dialog>
     <noscript>撮影にはJavaScriptを有効にしてください。</noscript>

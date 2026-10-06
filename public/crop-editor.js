@@ -51,7 +51,7 @@ export function createCropEditor({ onChange }) {
     context.clearRect(0, 0, 104, 104);
     context.drawImage(state.source, 52 - point.x * zoom, 52 - point.y * zoom,
       state.source.width * zoom, state.source.height * zoom);
-    context.strokeStyle = "#ffda78"; context.lineWidth = 1;
+    context.strokeStyle = "#FFD60A"; context.lineWidth = 1;
     context.beginPath(); context.moveTo(42, 52); context.lineTo(62, 52);
     context.moveTo(52, 42); context.lineTo(52, 62); context.stroke();
   }
@@ -73,6 +73,7 @@ export function createCropEditor({ onChange }) {
   function lockControls() {
     buttons.forEach((button) => { button.disabled = locked || state.busy || detecting; });
     $("crop-preview").disabled = locked || !state.source || state.busy || detecting;
+    $("crop-auto").disabled = locked || !state.source || state.busy || detecting;
     $("crop-reset").disabled = locked || !state.source || state.busy || detecting;
     $("crop-edit").disabled = locked || !state.source || state.busy || detecting || !showingResult;
     $("crop-nudge").disabled = locked || state.busy || detecting || !state.source || showingResult;
@@ -96,6 +97,7 @@ export function createCropEditor({ onChange }) {
     $("corner-selection").value = String(selected);
     $("image-stage").hidden = showingResult;
     $("cropped-image").hidden = !showingResult;
+    $("crop-preview").setAttribute("aria-pressed", String(showingResult));
     $("crop-hint").textContent = showingResult ? "保存される補正画像です。等倍で文字を確認できます。"
       : "四隅の丸を板面に合わせて動かし、「補正して確認」を押してください。自動検出の枠が合わない場合は手動で調整できます。";
     if (message) $("crop-status").textContent = message;
@@ -158,8 +160,8 @@ export function createCropEditor({ onChange }) {
   $("crop-reset").addEventListener("click", () => { state.reset(); invalidate(state.corners); render("画像全体の枠に戻しました。補正して確認してください。"); });
   $("crop-edit").addEventListener("click", () => { showingResult = false; render("元画像で四隅を調整できます。変更後は再度補正してください。"); });
   $("crop-cancel").addEventListener("click", () => { controller?.abort(); });
-  async function preview() {
-    if (locked || state.busy || detecting || !state.source) return;
+  async function preview({ forSave = false } = {}) {
+    if ((locked && !forSave) || state.busy || detecting || !state.source) return;
     controller = new AbortController();
     const signal = controller.signal;
     const current = generation;
@@ -192,7 +194,8 @@ export function createCropEditor({ onChange }) {
       render(error instanceof CropError ? error.message : "補正できませんでした。画像は残っています。空き容量と四隅を確認し、再試行してください。");
     } finally { if (controller?.signal === signal) controller = null; if (current === generation) { render(); resume(); } }
   }
-  $("crop-preview").addEventListener("click", preview);
+  $("crop-preview").addEventListener("click", () => { if (showingResult) { showingResult = false; render(); return; } return preview(); });
+  $("crop-auto").addEventListener("click", () => editor.begin(state.source));
   document.addEventListener("visibilitychange", () => { if (document.hidden) suspend(); else resume(); });
   window.addEventListener("pagehide", suspend);
   window.addEventListener("pageshow", resume);
@@ -200,6 +203,8 @@ export function createCropEditor({ onChange }) {
     get busy() { return state.busy || detecting; },
     get savable() { return state.savable && showingResult; },
     get canvas() { return state.result; },
+    get ready() { return Boolean(state.source) && !state.busy && !detecting; },
+    async prepareSave() { if (!state.savable) await preview({ forSave: true }); return state.savable ? state.result : null; },
     setLocked(value) { locked = Boolean(value); if (locked) { drag = null; hideMagnifier(); } lockControls(); },
     async begin(source, { restore = false } = {}) {
       interrupted = null;
@@ -236,7 +241,7 @@ export function createCropEditor({ onChange }) {
         state.change(points);
         detecting = false;
         controller = null;
-        await preview();
+        render("四隅を確認して保存してください。");
       } catch {
         if (current === generation) render("検出を中断しました。画像全体の枠から手動で調整できます。");
       } finally {

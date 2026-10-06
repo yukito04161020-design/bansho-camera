@@ -10,6 +10,8 @@ import { createDriveFolders, DriveFolderError } from "./drive-folders.js";
 import { createDriveUpload } from "./drive-upload.js";
 import { createUploadQueue } from "./upload-queue.js";
 import { returnToCamera, setCaptureBlocked, setCaptureOperationActive, cameraIsNavigating } from "./camera-preview.js";
+import { initializeCameraUi, showSettingsPage, showToast } from "./camera-ui.js";
+import { prepareReviewSave } from "./review-save.js";
 import { createCropEditor } from "./crop-editor.js";
 
 const session = new TokenSession();
@@ -40,6 +42,7 @@ let manualSelection = null;
 let automaticKey;
 const timetableEditor = createTimetableEditor({ save: (entries) => updateTimetable(entries) });
 const crop = createCropEditor({ onChange: render });
+initializeCameraUi();
 
 function namesFor(className) {
   const cached = settings.lessons.find((lesson) => lesson.className === className);
@@ -108,10 +111,23 @@ function render() {
   setCaptureOperationActive(initializing || saving || crop.busy || authorizing || folderLoading || timetableBusy || token.status === "valid");
   let destination = null;
   try { destination = selection(captured?.capturedAt); } catch { /* 未確認や入力不正は撮影前に案内する。 */ }
-  $("destination-status").textContent = (destination
-    ? `授業：${destination.className}／${destination.sessionFolderName}`
-    : `授業：${settings.selectedClass || "未判定"}／回：未確定。初回は保存先のオンライン確認が必要です。`)
-    + (destinationMessage ? `（${destinationMessage}）` : "");
+  const chip = destination ? `${destination.className}・${destination.sessionFolderName.split("_")[0]} ▾` : "授業を選ぶ ▾";
+  $("destination-status").textContent = chip + (!manualSelection && selectLesson(timetable?.entries || [], Date.now()).className === settings.selectedClass && settings.selectedClass ? " 自動" : "");
+  $("destination-status").classList.toggle("unselected", !destination);
+  $("review-options").textContent = captured?.resolve() ? `${captured.destination.className}・${captured.destination.sessionFolderName.split("_")[0]} ▾` : chip;
+  $("login-warning").hidden = token.status === "valid";
+  $("login-icon").setAttribute("aria-label", token.status === "valid" ? "ログイン済み、Googleアカウントを選び直す" : "未ログイン、Googleにログイン");
+  $("destination-message").textContent = destinationMessage || (!destination ? "授業を選び、初回はオンラインで保存先を確認してください。" : `${destination.className}／${destination.sessionFolderName}`);
+  $("settings-destination").textContent = destination ? `${destination.className}・${destination.sessionFolderName.split("_")[0]}` : "未選択";
+  $("settings-account").textContent = token.status === "valid" ? "ログイン済み" : "未ログイン";
+  $("settings-timetable").textContent = `${timetable?.entries.length || 0}コマ`;
+  $("settings-camera").textContent = $("camera-name").textContent.replace(/^カメラ：/, "");
+  $("settings-app").textContent = $("update-dot").hidden ? "版・更新" : "更新あり";
+  $("queue-badge").textContent = queueState.pendingCount ?? "?";
+  $("queue-icon").dataset.state = queueState.status;
+  $("queue-icon").dataset.failed = String(Boolean(queueState.reason));
+  $("queue-icon").dataset.empty = String(queueState.pendingCount === 0);
+  $("thumbnail-pending").hidden = !queueState.pendingCount;
   setCaptureBlocked(initializing ? "端末内保存を準備しています。" : saving ? "画像を保存しています。" : false);
   $("destination-status").setAttribute("aria-expanded", String($("options-panel").open));
   const locked = initializing || saving || authorizing || folderLoading || timetableBusy;
@@ -126,13 +142,14 @@ function render() {
     ? `Googleログイン済み（残り約${Math.ceil(token.remainingSeconds / 60)}分）`
     : "未ログインです。端末内の送信待ちはログイン後に送れます。");
   const fixed = captured?.resolve();
-  $("save-image").disabled = saving || !fixed || !queue || !crop.savable;
+  $("save-image").disabled = saving || !captured || !queue || !crop.ready;
   if (captured) {
     $("image-destination").textContent = fixed
       ? `保存先：板書／${fixed.className}／${fixed.sessionFolderName}`
       : "保存前に「授業と保存先を選ぶ」から授業を選び、回を確認してください。画像は残っています。";
   }
   $("back").disabled = saving || crop.busy;
+  $("review-options").disabled = saving || crop.busy;
   $("retry-upload").disabled = !queue || saving || authorizing || queueState.status === "sending";
   document.querySelectorAll("[data-pending-count]").forEach((node) => {
     node.textContent = queueState.pendingCount === null ? "送信待ち：確認できません" : `送信待ち：${queueState.pendingCount}件`;
@@ -233,11 +250,14 @@ function authorize() {
 }
 $("google-login").addEventListener("click", authorize);
 function openOptions() {
-  $("save-options").open = true;
+  showSettingsPage("save-options");
   $("options-panel").showModal();
   render();
 }
-for (const id of ["destination-status", "open-options", "review-options"]) $(id).addEventListener("click", openOptions);
+for (const id of ["destination-status", "review-options"]) $(id).addEventListener("click", openOptions);
+$("open-options").addEventListener("click", () => { showSettingsPage(null); $("options-panel").showModal(); });
+$("login-icon").addEventListener("click", authorize);
+$("queue-icon").addEventListener("click", () => { showSettingsPage("transfer-options"); $("options-panel").showModal(); });
 $("close-options").addEventListener("click", () => { $("options-panel").close(); });
 $("options-panel").addEventListener("close", render);
 $("cancel-login").addEventListener("click", () => {
@@ -254,12 +274,15 @@ $("apply-class").addEventListener("click", async () => {
   try { await queue.writeManualLesson(manualSelection); }
   catch { destinationMessage = "手動選択を記憶できません。この画面では選択できます。"; }
   $("session-number").value = "";
+  captured?.reselect();
   render();
   if (session.snapshot().status === "valid" && navigator.onLine !== false) await readFolders(settings.selectedClass);
   await remember();
+  captured?.reselect();
   render();
 });
 $("session-number").addEventListener("input", () => {
+  captured?.reselect();
   destinationMessage = "";
   try { selection(captured?.capturedAt); }
   catch (error) { destinationMessage = error instanceof FolderNameError ? error.message : "授業の保存先をオンラインで確認してください。"; }
@@ -276,28 +299,38 @@ document.addEventListener("bansho-captured", (event) => {
   applyTimetable(event.detail.capturedAt);
   captured = createCapturedDraft(event.detail.capturedAt, selection);
   $("save-status").textContent = "補正画像と保存先を確認して保存してください。";
+  $("image-info-panel").hidden = true;
+  $("image-info").setAttribute("aria-expanded", "false");
   crop.begin($("image"));
   render();
 });
 $("back").addEventListener("click", () => { captured = null; crop.clear(); render(); });
 $("save-image").addEventListener("click", async () => {
-  if (saving || !captured?.resolve() || !queue || !crop.savable || cameraIsNavigating()) return;
+  if (saving || !captured || !queue || !crop.ready || cameraIsNavigating()) return;
+  if (!captured.resolve()) { openOptions(); return; }
   saving = true;
+  $("save-image").classList.add("busy");
   $("save-status").textContent = "撮影画像を端末内に保存しています。";
   render();
   try {
-    await saveCapturedImage({ canvas: crop.canvas, destination: captured.destination, enqueue: (item) => queue.enqueue(item) });
+    const corrected = await prepareReviewSave({ draft: captured, crop, selectDestination: openOptions });
+    if (!corrected || document.hidden) return;
+    await saveCapturedImage({ canvas: corrected, destination: captured.destination, enqueue: (item) => queue.enqueue(item) });
     pending.push({ className: captured.destination.className, sessionFolderName: captured.destination.sessionFolderName });
+    const thumb = $("thumbnail");
+    thumb.getContext("2d").drawImage(corrected, 0, 0, 64, 64);
+    $("last-image").disabled = false;
     captured = null;
     crop.clear();
     storedMessage = "端末内に保存しました。ドライブへは前面で順に送ります。";
     saving = false;
-    $("save-options").open = false;
+    $("options-panel").close();
     render();
     returnToCamera();
+    showToast("保存しました");
   } catch {
     $("save-status").textContent = "端末内に保存できませんでした。画像を残しています。空き容量を確認し、再試行してください。";
-  } finally { saving = false; render(); }
+  } finally { saving = false; $("save-image").classList.remove("busy"); render(); }
 });
 
 async function initialize() {
