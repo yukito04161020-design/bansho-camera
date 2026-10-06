@@ -141,7 +141,8 @@ test("撮影画面は倍率を戻して自動再開し、確認中は画像・�
     assert.equal($("image-destination").textContent, destination);
     assert.equal($("session-number").value, "7");
     assert.equal($("image-screen").hidden, false); assert.equal($("camera-screen").hidden, true);
-    assert.equal($("image-area").scrollLeft, 15); assert.equal($("image-area").scrollTop, 20);
+    // 調整中の画像は等倍切り替え後も領域内へ収め、つまみを画面外へ出さない。
+    assert.equal($("image-area").scrollLeft, 0); assert.equal($("image-area").scrollTop, 0);
     assert.equal(env.cuts(), cuts); assert.equal(env.requests.length, opens);
     assert.equal($("camera-comparison").open, false);
   } finally { env.visibility(true); await pause(); store.close(); env.restore(); }

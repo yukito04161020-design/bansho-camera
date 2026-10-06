@@ -6,7 +6,8 @@ function environment() {
   const elements = new Map(), listeners = new Map();
   function element(id) {
     if (!elements.has(id)) elements.set(id, {
-      clientWidth: 800, clientHeight: 400, classList: { contains() { return false; } },
+      clientWidth: 800, clientHeight: 400, classList: { actual: false, contains() { return this.actual; } },
+      scrollTo(x, y) { this.scrollLeft = x; this.scrollTop = y; },
       getBoundingClientRect() { return { left: 100, top: 100, width: 400, height: 300 }; },
       setPointerCapture() {},
       width: 80, height: 60, style: { setProperty() {} }, events: new Map(),
@@ -159,5 +160,24 @@ test("つまみ操作中だけ拡大鏡を表示し、終了・中断・裏へ�
       else corner.events.get(finish)();
       assert.equal(lens.hidden, true);
     }
+  } finally { env.restore(); }
+});
+
+
+test("補正画像の等倍確認から調整へ戻ると表示を収め、スクロール位置を戻す", async () => {
+  const env = environment();
+  try {
+    const editor = createCropEditor({ onChange() {} });
+    await editor.begin(env.element("image"));
+    const area = env.element("image-area");
+    area.classList.actual = true;
+    env.element("actual-size").events.get("click")();
+    await new Promise(resolve => setTimeout(resolve, 5));
+    assert.equal(env.element("cropped-image").style.width, "");
+    area.scrollLeft = 500; area.scrollTop = 300;
+    env.element("crop-edit").events.get("click")();
+    assert.equal(area.scrollLeft, 0); assert.equal(area.scrollTop, 0);
+    assert.equal(env.element("image-stage").style.width, "400px");
+    editor.clear();
   } finally { env.restore(); }
 });

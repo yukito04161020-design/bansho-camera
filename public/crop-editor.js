@@ -28,6 +28,7 @@ export function createCropEditor({ onChange }) {
       for (const key of ["left", "top", "width", "height"]) target.style[key] = "";
       return;
     }
+    area.scrollTo(0, 0);
     const rect = cropLayout({ width: area.clientWidth, height: area.clientHeight,
       imageWidth: source.width, imageHeight: source.height, safeArea });
     for (const key of ["left", "top", "width", "height"]) target.style[key] = `${rect[key]}px`;
