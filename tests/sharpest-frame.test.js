@@ -59,6 +59,8 @@ test("最大8コマ・約0.5秒の時間枠を守り、同点なら最初を採�
   const f = fixture(Array(8).fill(image()));
   const result = await captureSharpestFrame(f.options);
   assert.equal(result.count, 8); assert.equal(result.selected, 1);
+  assert.equal(f.peak(), 2);
+  assert.equal(new Set(f.captures).size, 2);
   assert.ok(f.waits.reduce((a, b) => a + b, 0) < 650);
   const slow = fixture();
   slow.options.delay = async () => {};
@@ -85,5 +87,21 @@ for (const interrupt of ["hidden", "停止", "abort"]) test(`${interrupt}で途�
     }
   };
   await assert.rejects(captureSharpestFrame(f.options), { name: "AbortError" });
+  assert.ok(f.canvases.every(c => c.width === 0 && c.height === 0));
+});
+
+
+test("実際の待機タイマーもabortですぐ終了し、画像を解放する", async () => {
+  const f = fixture(); delete f.options.delay;
+  f.options.settings = { ...f.options.settings, delayMs: 60000 };
+  const pending = captureSharpestFrame(f.options);
+  f.controller.abort();
+  await assert.rejects(pending, { name: "AbortError" });
+  assert.ok(f.canvases.every(c => c.width === 0 && c.height === 0));
+});
+test("採用画像のコピーに失敗した場合は空画像を確認へ渡さず撮影失敗にする", async () => {
+  const f = fixture();
+  f.options.output.getContext = () => ({ drawImage() { throw new Error("コピー失敗"); } });
+  await assert.rejects(captureSharpestFrame(f.options), /コピー失敗/);
   assert.ok(f.canvases.every(c => c.width === 0 && c.height === 0));
 });

@@ -47,6 +47,7 @@ export async function captureSharpestFrame({ video, output, settings, signal,
       }
       check();
       if (now() - start >= settings.durationMs) break;
+      let score;
       try {
         capture(video, work);
         const scale = Math.min(1, settings.scoreLongEdge / Math.max(work.width, work.height));
@@ -54,19 +55,20 @@ export async function captureSharpestFrame({ video, output, settings, signal,
         small.height = Math.max(1, Math.round(work.height * scale));
         const context = small.getContext("2d", { willReadFrequently: true });
         context.drawImage(work, 0, 0, small.width, small.height);
-        const score = sharpness(context.getImageData(0, 0, small.width, small.height));
-        result.count++;
-        result.min = result.min === null ? score : Math.min(result.min, score);
-        if (result.max === null || score > result.max) {
-          output.width = work.width; output.height = work.height;
-          output.getContext("2d").drawImage(work, 0, 0);
-          result.selected = result.count;
-          result.max = score;
-        }
+        score = sharpness(context.getImageData(0, 0, small.width, small.height));
       } catch (error) {
         check(); // カメラ停止はフォールバックではなく撮影中止。
         if (error.name === "AbortError") throw error;
         // 一時的な切り出し・計算失敗なら次のコマを試す。
+        continue;
+      }
+      result.count++;
+      result.min = result.min === null ? score : Math.min(result.min, score);
+      if (result.max === null || score > result.max) {
+        output.width = work.width; output.height = work.height;
+        output.getContext("2d").drawImage(work, 0, 0);
+        result.selected = result.count;
+        result.max = score;
       }
     }
     check();
