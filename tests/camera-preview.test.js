@@ -76,6 +76,9 @@ function environment(devices = [{ deviceId: "dual", label: "背面デュアル�
     ImageData: class { constructor(data, width, height) { Object.assign(this, { data, width, height }); } },
     requestAnimationFrame: callback => setTimeout(callback, 0), cancelAnimationFrame: clearTimeout };
   for (const [key, value] of Object.entries(globals)) Object.defineProperty(globalThis, key, { configurable: true, writable: true, value });
+  const form = element("timetable-form");
+  form.elements = Object.fromEntries(["day", "period", "className", "start", "end"].map(key => [key, new Element(key)]));
+  form.reset = () => { element("timetable-preset").value = "1限"; };
   element("image-screen").hidden = true;
   Object.assign(element("camera"), { videoWidth: 80, videoHeight: 60, readyState: 2, paused: true });
   element("capture").disabled = true;

@@ -74,3 +74,13 @@ export function manualLessonRecord(input) {
   }
   return { className: classFolderName(input.className), date: input.date, keys: [...input.keys] };
 }
+
+// 月〜日、既定の1〜7限、その他は開始時刻の順。同じ時限は開始時刻で並べる。
+export function sortTimetableEntries(entries) {
+  const rank = (period) => {
+    const index = config.periodPresets.findIndex((item) => item.period === period);
+    return index < 0 ? config.periodPresets.length : index;
+  };
+  return [...entries].sort((a, b) => a.day - b.day || rank(a.period) - rank(b.period)
+    || minute(a.start) - minute(b.start));
+}
