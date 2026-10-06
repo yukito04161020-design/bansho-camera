@@ -15,6 +15,7 @@ test("主な操作ボタンは読み上げ名を持ち、44px以上の操作領�
   assert.match(css, /button\s*\{[^}]*min-width: 44px;[^}]*min-height: 44px;/);
   assert.match(css, /#capture\s*\{[^}]*width: 72px;[^}]*height: 72px;/);
   assert.match(css, /\.crop-corner\s*\{[^}]*width: 44px;[^}]*height: 44px;/);
+  assert.ok([...css.matchAll(/min-(?:width|height): (\d+)px/g)].every(match => Number(match[1]) >= 44));
   assert.match(css, /#camera\s*\{ object-fit: cover;/);
   assert.equal((html.match(/data-app-version/g) || []).length, 1);
   assert.ok(html.indexOf('data-app-version') > html.indexOf('id="app-options"'));

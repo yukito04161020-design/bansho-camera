@@ -1,91 +1,47 @@
-#destination-status { display: block; width: 100%; background: transparent; border: 0; padding: 0.25rem 0; text-align: left; font-size: 0.9rem; font-weight: 700; overflow-wrap: anywhere; }
-#save-options { max-height: 35dvh; }
-#save-options input { width: 100%; font: inherit; min-height: 44px; margin: 0.25rem 0; }
-#save-options button { margin-bottom: 0.35rem; }
-#auth-status, .transfer, #save-status, #image-destination { font-size: 0.8rem; }
-.review-header { max-height: 55dvh; overflow-y: auto; flex: 0 0 auto; }
-#save-image { background: #216442; }
-#crop-hint, #crop-status { font-size: 0.8rem; }
-#image-area { padding: 24px; }
-#image-stage { position: relative; width: 100%; }
+/* 既存の画像配置・時間割機能を維持する共通スタイル。 */
+:root { font: -apple-system-body; }
+#destination-status { display: block; border: 0; padding: .25rem; font-weight: 700; min-height: 44px; overflow-wrap: anywhere; }
+#save-options input { width: 100%; font: inherit; min-height: 44px; margin: .25rem 0; }
+#save-options button { margin-bottom: .35rem; }
+#auth-status, .transfer, #image-destination { font-size: .8rem; }
 #image-stage canvas, #cropped-image { width: 100%; height: auto; object-fit: fill; }
-.actual-size #image-stage { width: var(--source-width); }
 .actual-size #cropped-image { width: auto; height: auto; }
 #crop-overlay { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; overflow: visible; }
-#crop-outline { fill: rgb(255 218 120 / 10%); stroke: #ffda78; stroke-width: 3; vector-effect: non-scaling-stroke; }
-.crop-corner { position: absolute; transform: translate(-50%, -50%); width: 44px; height: 44px; padding: 0; border-radius: 50%; font-size: 0.75rem; background: #164e46; touch-action: none; }
-.crop-corner[aria-pressed="true"] { border: 3px solid #ffda78; }
-@media (orientation: landscape) and (max-height: 500px) {
-  #save-options { max-height: 30dvh; }
-  .review-header { max-height: 65dvh; }
-  #retry-upload { font-size: 0.75rem; min-height: 32px; padding: 0.25rem 0.6rem; }
-}
-/* 撮影中は映像全体を表示し、詳細操作は閉じられるシートへ集約する。 */
-#camera { touch-action: none; }
-#camera-screen .overlay { position: absolute; pointer-events: none; padding-top: 0.35rem; padding-bottom: 0.35rem; }
+.crop-corner { position: absolute; transform: translate(-50%, -50%); width: 44px; height: 44px; padding: 0; border-radius: 50%; touch-action: none; }
+.crop-corner[aria-pressed="true"] { z-index: 2; }
+#camera-screen .overlay { position: absolute; pointer-events: none; padding-top: .35rem; padding-bottom: .35rem; }
 #camera-screen .overlay button { pointer-events: auto; }
-#camera-screen .top { padding-top: max(0.35rem, env(safe-area-inset-top)); background: linear-gradient(rgb(0 0 0 / 65%), transparent); }
-#camera-screen .bottom { bottom: 0; padding-bottom: max(0.35rem, env(safe-area-inset-bottom)); background: linear-gradient(transparent, rgb(0 0 0 / 75%)); }
-#destination-status { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-height: 44px; }
-#camera-screen .buttons { margin: 0.25rem 0; display: inline-flex; }
-#capture { background: #216442; min-width: 5rem; }
-#capture-reason, #camera-screen .transfer { font-size: 0.8rem; }
-#options-panel { color: #fff; background: #101715; border: 1px solid #96ccba; border-radius: 1rem 1rem 0 0; width: min(100%, 38rem); max-height: 85dvh; margin: auto auto 0; padding: 1rem max(1rem, env(safe-area-inset-right)) max(1rem, env(safe-area-inset-bottom)) max(1rem, env(safe-area-inset-left)); overflow: auto; }
+#camera-screen .top { padding-top: max(.35rem, env(safe-area-inset-top)); overflow: visible; }
+#camera-screen .bottom { bottom: 0; padding-bottom: max(.35rem, env(safe-area-inset-bottom)); }
+#capture-reason { font-size: .8rem; }
+#options-panel { color: #fff; border: 1px solid #444; border-radius: 1rem 1rem 0 0; width: min(100%, 38rem); max-height: 85dvh; margin: auto auto 0; padding: 1rem max(1rem, env(safe-area-inset-right)) max(1rem, env(safe-area-inset-bottom)) max(1rem, env(safe-area-inset-left)); overflow: auto; overflow-wrap: anywhere; }
 #options-panel::backdrop { background: rgb(0 0 0 / 45%); }
 #options-panel details { max-height: none; overflow: visible; }
 #options-panel h2 { font-size: 1.1rem; }
-#close-options { position: sticky; top: 0; z-index: 1; }
-.review-header { max-height: 40dvh; }
-@media (orientation: landscape) {
-  .review { flex-direction: row; }
-  .review-header { width: 38%; max-height: 100%; min-height: 0; overflow: auto; padding-bottom: max(0.75rem, env(safe-area-inset-bottom)); }
-  .review .image-area { width: 62%; }
-}
-#camera-name { font-size: 0.7rem; margin: 0; }
-#camera-comparison { background: #101715; color: white; width: 95vw; max-height: 85dvh; overflow: auto; }
-#comparison-images { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 0.75rem; }
+#close-options { position: sticky; top: 0; z-index: 1; background: #222; }
+#camera-comparison { color: white; width: 95vw; max-height: 85dvh; overflow: auto; }
+#comparison-images { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: .75rem; }
 #comparison-images canvas { width: 100%; height: auto; }
-#timetable-panel { border-top: 1px solid #96ccba; margin-top: 1rem; }
-#timetable-form label { display: block; margin-top: 0.5rem; }
-#timetable-form input, #timetable-form select { width: 100%; min-height: 44px; font: inherit; margin: 0.25rem 0; }
+#timetable-form label { display: block; margin-top: .5rem; }
+#timetable-form input, #timetable-form select { width: 100%; min-height: 44px; font: inherit; margin: .25rem 0; }
 #timetable-list { padding-left: 1.2rem; overflow-wrap: anywhere; }
-#timetable-list button { margin: 0 0.4rem 0.4rem 0; }
-
+#timetable-list button { margin: 0 .4rem .4rem 0; }
 #camera-screen, #camera-screen * { touch-action: none; }
 #camera-screen button { touch-action: manipulation; }
 #camera-screen input[type="range"] { pointer-events: auto; }
-#image-area { touch-action: pan-x pan-y; min-width: 0; }
-#camera-screen .top { overflow: visible; }
-#destination-status { white-space: normal; overflow: visible; }
-#options-panel, .review-header { overflow-wrap: anywhere; }
-/* iOSのテキストサイズに追従する。非対応ブラウザは既存のフォント設定を使う。 */
-:root { font: -apple-system-body; }
-
 #timetable-import { margin: 1rem 0; }
-#timetable-import textarea { width: 100%; box-sizing: border-box; font: inherit; margin: 0.5rem 0; }
+#timetable-import textarea { width: 100%; box-sizing: border-box; font: inherit; margin: .5rem 0; }
 #timetable-import li { overflow-wrap: anywhere; }
-
-/* つまみの半径はcropLayoutで確保し、ここはsafe-areaと追加余白を担当する。 */
-#image-area {
-  position: relative;
+/* つまみの半径はcropLayout、safe-areaと追加余白はここで確保する。 */
+#image-area { position: relative; touch-action: pan-x pan-y; min-width: 0;
   padding: calc(env(safe-area-inset-top) + 24px) calc(env(safe-area-inset-right) + 24px)
-    calc(env(safe-area-inset-bottom) + 32px) calc(env(safe-area-inset-left) + 24px);
-}
+    calc(env(safe-area-inset-bottom) + 32px) calc(env(safe-area-inset-left) + 24px); }
 #image-stage { position: absolute; }
 #image-stage #image { width: 100%; height: 100%; }
 .actual-size #image-stage { width: auto; }
 #cropped-image { position: absolute; }
 .actual-size #cropped-image { position: static; }
-.crop-corner { font-size: 11px; line-height: 1; white-space: nowrap; overflow: hidden; }
-.crop-corner[aria-pressed="true"] { z-index: 2; background: #705019; }
-.review-header {
-  padding: calc(env(safe-area-inset-top) + 24px) calc(env(safe-area-inset-right) + 24px)
-    calc(env(safe-area-inset-bottom) + 32px) calc(env(safe-area-inset-left) + 24px);
-}
-#crop-magnifier { position: fixed; z-index: 10; pointer-events: none; border: 2px solid #ffda78;
-  border-radius: 50%; background: #101715; width: 104px; height: 104px; }
-/* スクロール途中の操作ボタンもホームバーから離れた枠内で操作する。 */
-#image-screen { padding-bottom: calc(env(safe-area-inset-bottom) + 32px); }
+#crop-magnifier { position: fixed; z-index: 10; pointer-events: none; border: 2px solid #FFD60A; border-radius: 50%; background: #111; width: 104px; height: 104px; }
 /* Issue #47: カメラとスキャン画面 */
 :root { font-family: -apple-system, sans-serif; background: #000; accent-color: #FFD60A; }
 body, .screen { background: #000; }
@@ -163,3 +119,7 @@ a { color: #FFD60A; }
 #save-image.busy::before { content: ''; display: inline-block; width: 16px; height: 16px; margin-right: 4px; border: 2px solid #000; border-right-color: transparent; border-radius: 50%; animation: working 1s linear infinite; }
 #save-status.sr-only, #crop-status.sr-only { position: absolute; bottom: auto; left: auto; right: auto; }
 #zoom { accent-color: #FFD60A; background: repeating-linear-gradient(90deg, transparent 0 8px, #888 8px 9px); }
+
+#camera-start { pointer-events: none; }
+#camera-start button { pointer-events: auto; }
+#crop-cancel { position: absolute; z-index: 4; left: 24px; bottom: calc(env(safe-area-inset-bottom) + 110px); background: #222; }

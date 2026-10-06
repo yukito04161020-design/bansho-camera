@@ -27,7 +27,7 @@ export function initializeCameraUi() {
   $("image-info").addEventListener("click", () => { $("image-info-panel").hidden = !$("image-info-panel").hidden; $("image-info").setAttribute("aria-expanded", String(!$("image-info-panel").hidden)); });
   $("last-image").addEventListener("click", () => { showSettingsPage("transfer-options"); $("options-panel").showModal(); });
   const zoom = $("zoom"), group = $("zoom-buttons");
-  let signature = "", hold, origin;
+  let signature = "", hold, origin, adjusting = false;
   function renderZoom() {
     const key = `${zoom.min}:${zoom.max}`;
     if (key !== signature) {
@@ -35,18 +35,18 @@ export function initializeCameraUi() {
       group.replaceChildren(...zoomStops(Number(zoom.min), Number(zoom.max)).map(value => {
         const button = document.createElement("button"); button.type = "button"; button.dataset.zoom = value;
         button.textContent = `${value}×`; button.setAttribute("aria-label", `倍率を${value}倍にする`);
-        button.addEventListener("click", () => { zoom.value = value; zoom.dispatchEvent(new Event("input", { bubbles: true })); });
+        button.addEventListener("click", () => { if (adjusting) return; zoom.value = value; zoom.dispatchEvent(new Event("input", { bubbles: true })); });
         return button;
       }));
     }
     for (const button of group.children) { button.disabled = zoom.disabled; button.setAttribute("aria-pressed", String(Math.abs(Number(button.dataset.zoom) - Number(zoom.value)) < .05)); }
-    $("camera-start").hidden = $("camera").readyState >= 2 && !$("camera").paused;
+    $("camera-start").hidden = Boolean($("camera").srcObject) && $("camera").readyState >= 2 && !$("camera").paused;
   }
-  group.addEventListener("pointerdown", event => { origin = event.clientX; hold = setTimeout(() => { zoom.hidden = false; }, 450); });
-  group.addEventListener("pointermove", event => { if (origin !== undefined && Math.abs(event.clientX - origin) > 12) zoom.hidden = false; });
+  group.addEventListener("pointerdown", event => { origin = event.clientX; adjusting = false; hold = setTimeout(() => { adjusting = true; zoom.hidden = false; }, 450); });
+  group.addEventListener("pointermove", event => { if (origin !== undefined && Math.abs(event.clientX - origin) > 12) { adjusting = true; zoom.hidden = false; } });
   for (const event of ["pointerup", "pointercancel"]) group.addEventListener(event, () => { clearTimeout(hold); origin = undefined; });
   zoom.addEventListener("change", () => { setTimeout(() => { zoom.hidden = true; }, 2000); });
-  window.setInterval(renderZoom, 150); renderZoom();
+  window.setInterval(() => { if (!document.hidden) renderZoom(); }, 150); renderZoom();
   for (const id of ["status", "crop-status", "save-status"]) new MutationObserver(() => showToast($(id).textContent)).observe($(id), { childList: true, subtree: true, characterData: true });
   new MutationObserver(() => { $("update-dot").hidden = !document.querySelector("[data-update-status]").textContent.includes("新しい版"); }).observe(document.querySelector("[data-update-status]"), { childList: true });
   bindLiveOutline({ video: $("camera"), screen: $("camera-screen"), overlay: $("live-outline"), toggle: $("overlay-enabled") });

@@ -63,7 +63,7 @@
     </main>
     <dialog id="options-panel" aria-labelledby="options-title">
       <h2 id="options-title">設定</h2><button id="settings-back" type="button" hidden aria-label="戻る">戻る</button>
-      <nav id="settings-menu" aria-label="設定項目"><button data-settings-page="save-options" aria-label="授業と保存先 選択 ›">授業と保存先 <span>選択 ›</span></button><button id="open-timetable" type="button" disabled aria-controls="timetable-panel" aria-label="時間割 編集 ›">時間割 <span>編集 ›</span></button><button data-settings-page="account-options" aria-label="Googleアカウント ログイン ›">Googleアカウント <span>ログイン ›</span></button><button data-settings-page="camera-options" aria-label="撮影 カメラ情報 ›">撮影 <span>カメラ情報 ›</span></button><button data-settings-page="app-options" aria-label="アプリ 版・更新 ›">アプリ <span>版・更新 ›</span></button></nav>
+      <nav id="settings-menu" aria-label="設定項目"><button data-settings-page="save-options" aria-label="授業と保存先 選択 ›">授業と保存先 <span><span id="settings-destination">未選択</span> ›</span></button><button id="open-timetable" type="button" disabled aria-controls="timetable-panel" aria-label="時間割 編集 ›">時間割 <span><span id="settings-timetable">編集</span> ›</span></button><button data-settings-page="account-options" aria-label="Googleアカウント ログイン ›">Googleアカウント <span><span id="settings-account">未ログイン</span> ›</span></button><button data-settings-page="camera-options" aria-label="撮影 カメラ情報 ›">撮影 <span><span id="settings-camera">未開始</span> ›</span></button><button data-settings-page="app-options" aria-label="アプリ 版・更新 ›">アプリ <span><span id="settings-app">更新状態</span> ›</span></button></nav>
       <button id="close-options" type="button" aria-label="設定を閉じる">設定を閉じる</button>
           <section id="save-options" data-settings-detail hidden>
             <h3>授業と保存先</h3><p id="destination-message" role="status"></p>
@@ -86,7 +86,7 @@
             <p id="capture-diagnostics">撮影結果はまだありません。</p>
             <p id="camera-diagnostics">カメラ開始後に表示します。</p>
             <p id="resolution">映像：未取得</p>
-            <p id="request">要求：背面カメラ・高解像度</p>
+            <p id="request">要求：背面カメラ・高解像度</p><button id="stop" type="button" disabled aria-label="カメラを停止">カメラを停止</button>
           </section>
 
       <section id="timetable-panel" data-settings-detail hidden aria-labelledby="timetable-title">
@@ -131,7 +131,6 @@
       <section id="app-options" data-settings-detail hidden><h3>アプリ</h3><p class="version">版：<span data-app-version>開発版</span></p><p data-update-status role="status"></p><a href="./">ホームに戻る</a></section>
       <div class="sr-only"><p id="preference-status"></p><p id="status" role="status"></p><p id="wake-status"></p></div>
       <section id="transfer-options" data-settings-detail hidden><p data-pending-count></p><p data-transfer-status role="status"></p><button id="retry-upload" type="button" disabled aria-label="送信を再開する">送信を再開する</button></section>
-      <button id="stop" type="button" disabled hidden aria-label="カメラを停止">カメラを停止</button>
     </dialog>
     <dialog id="camera-comparison" aria-labelledby="comparison-title">
       <h2 id="comparison-title">カメラの撮り比べ</h2>

@@ -118,6 +118,11 @@ function render() {
   $("login-warning").hidden = token.status === "valid";
   $("login-icon").setAttribute("aria-label", token.status === "valid" ? "ログイン済み、Googleアカウントを選び直す" : "未ログイン、Googleにログイン");
   $("destination-message").textContent = destinationMessage || (!destination ? "授業を選び、初回はオンラインで保存先を確認してください。" : `${destination.className}／${destination.sessionFolderName}`);
+  $("settings-destination").textContent = destination ? `${destination.className}・${destination.sessionFolderName.split("_")[0]}` : "未選択";
+  $("settings-account").textContent = token.status === "valid" ? "ログイン済み" : "未ログイン";
+  $("settings-timetable").textContent = `${timetable?.entries.length || 0}コマ`;
+  $("settings-camera").textContent = $("camera-name").textContent.replace(/^カメラ：/, "");
+  $("settings-app").textContent = $("update-dot").hidden ? "版・更新" : "更新あり";
   $("queue-badge").textContent = queueState.pendingCount ?? "?";
   $("queue-icon").dataset.state = queueState.status;
   $("queue-icon").dataset.failed = String(Boolean(queueState.reason));
@@ -294,6 +299,8 @@ document.addEventListener("bansho-captured", (event) => {
   applyTimetable(event.detail.capturedAt);
   captured = createCapturedDraft(event.detail.capturedAt, selection);
   $("save-status").textContent = "補正画像と保存先を確認して保存してください。";
+  $("image-info-panel").hidden = true;
+  $("image-info").setAttribute("aria-expanded", "false");
   crop.begin($("image"));
   render();
 });

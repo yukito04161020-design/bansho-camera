@@ -83,7 +83,7 @@ async function settled(editor) {
   assert.fail("画像処理が完了しませんでした。");
 }
 
-test("検出途中で裏へ移った場合は元画像を保持し、前面復帰後に検出と補正をやり直す", async () => {
+test("検出途中で裏へ移った場合は元画像を保持し、前面復帰後に検出と調整画面を戻す", async () => {
   const env = environment();
   try {
     const editor = createCropEditor({ onChange() {} });
