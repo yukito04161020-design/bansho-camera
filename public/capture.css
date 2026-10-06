@@ -64,3 +64,25 @@
 #timetable-import { margin: 1rem 0; }
 #timetable-import textarea { width: 100%; box-sizing: border-box; font: inherit; margin: 0.5rem 0; }
 #timetable-import li { overflow-wrap: anywhere; }
+
+/* つまみの半径はcropLayoutで確保し、ここはsafe-areaと追加余白を担当する。 */
+#image-area {
+  position: relative;
+  padding: calc(env(safe-area-inset-top) + 24px) calc(env(safe-area-inset-right) + 24px)
+    calc(env(safe-area-inset-bottom) + 32px) calc(env(safe-area-inset-left) + 24px);
+}
+#image-stage { position: absolute; }
+#image-stage #image { width: 100%; height: 100%; }
+.actual-size #image-stage { width: auto; }
+#cropped-image { position: absolute; }
+.actual-size #cropped-image { position: static; }
+.crop-corner { font-size: 11px; line-height: 1; white-space: nowrap; overflow: hidden; }
+.crop-corner[aria-pressed="true"] { z-index: 2; background: #705019; }
+.review-header {
+  padding: calc(env(safe-area-inset-top) + 24px) calc(env(safe-area-inset-right) + 24px)
+    calc(env(safe-area-inset-bottom) + 32px) calc(env(safe-area-inset-left) + 24px);
+}
+#crop-magnifier { position: fixed; z-index: 10; pointer-events: none; border: 2px solid #ffda78;
+  border-radius: 50%; background: #101715; width: 104px; height: 104px; }
+/* スクロール途中の操作ボタンもホームバーから離れた枠内で操作する。 */
+#image-screen { padding-bottom: calc(env(safe-area-inset-bottom) + 32px); }

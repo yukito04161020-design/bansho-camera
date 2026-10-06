@@ -6,10 +6,13 @@ function environment() {
   const elements = new Map(), listeners = new Map();
   function element(id) {
     if (!elements.has(id)) elements.set(id, {
+      clientWidth: 800, clientHeight: 400, classList: { contains() { return false; } },
+      getBoundingClientRect() { return { left: 100, top: 100, width: 400, height: 300 }; },
+      setPointerCapture() {},
       width: 80, height: 60, style: { setProperty() {} }, events: new Map(),
       setAttribute(key, value) { this[key] = value; },
       addEventListener(key, callback) { this.events.set(key, callback); },
-      getContext() { return { drawImage() {}, getImageData() { return pixels(); }, putImageData() {} }; },
+      getContext() { return { drawImage() {}, getImageData() { return pixels(); }, putImageData() {}, clearRect() {}, beginPath() {}, moveTo() {}, lineTo() {}, stroke() {} }; },
     });
     return elements.get(id);
   }
@@ -21,11 +24,12 @@ function environment() {
     }
     return { width: 80, height: 60, data };
   }
-  const originals = new Map(["document", "window", "ImageData"].map(k => [k, globalThis[k]]));
+  const originals = new Map(["document", "window", "ImageData", "ResizeObserver"].map(k => [k, globalThis[k]]));
   const doc = { hidden: false, getElementById: element, querySelectorAll: () => [0, 1, 2, 3].map(i => element(`corner${i}`)),
     createElement: () => element("small"), addEventListener: (key, callback) => listeners.set(key, callback) };
   globalThis.document = doc;
-  globalThis.window = { setTimeout: (callback) => setTimeout(callback, 0), addEventListener: (key, callback) => listeners.set(key, callback) };
+  globalThis.ResizeObserver = class { observe() {} };
+  globalThis.window = { innerWidth: 800, innerHeight: 400, getComputedStyle() { return { paddingTop: "24px", paddingRight: "24px", paddingBottom: "32px", paddingLeft: "24px" }; }, setTimeout: (callback) => setTimeout(callback, 0), addEventListener: (key, callback) => listeners.set(key, callback) };
   globalThis.ImageData = class { constructor(data, width, height) { Object.assign(this, { data, width, height }); } };
   return { element, doc, listeners, restore() { for (const [k, v] of originals) { if (v === undefined) delete globalThis[k]; else globalThis[k] = v; } } };
 }
@@ -130,5 +134,30 @@ test("処理停止の完了前に前面へ戻っても、完了後に自動で�
     await pending; await settled(editor);
     assert.equal(editor.savable, true);
     editor.clear();
+  } finally { env.restore(); }
+});
+
+
+test("つまみ操作中だけ拡大鏡を表示し、終了・中断・裏への移動で閉じる", async () => {
+  const env = environment();
+  try {
+    const editor = createCropEditor({ onChange() {} });
+    await editor.begin(env.element("image"));
+    env.element("crop-edit").events.get("click")();
+    env.element("crop-reset").events.get("click")();
+    assert.equal(env.element("image-stage").style.width, "400px");
+    const corner = env.element("corner0"), lens = env.element("crop-magnifier");
+    const pointer = { button: 0, isPrimary: true, pointerId: 1, clientX: 100, clientY: 100, preventDefault() {} };
+    for (const finish of ["pointerup", "pointercancel", "lostpointercapture", "hidden", "clear"]) {
+      corner.events.get("pointerdown")(pointer);
+      assert.equal(lens.hidden, false);
+      assert.equal(corner["aria-pressed"], "true");
+      corner.events.get("pointermove")({ ...pointer, clientX: 120, clientY: 120 });
+      assert.equal(lens.hidden, false);
+      if (finish === "hidden") { env.doc.hidden = true; env.listeners.get("visibilitychange")(); env.doc.hidden = false; }
+      else if (finish === "clear") editor.clear();
+      else corner.events.get(finish)();
+      assert.equal(lens.hidden, true);
+    }
   } finally { env.restore(); }
 });
