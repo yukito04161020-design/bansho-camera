@@ -1,19 +1,45 @@
-import { timetableRecord } from "./timetable-logic.js";
+import { config } from "./config.js";
+import { timetableRecord, sortTimetableEntries } from "./timetable-logic.js";
 
-export function createTimetableEditor({ save }) {
+export function createTimetableEditor({ save, document = globalThis.document }) {
   const $ = (id) => document.getElementById(id);
   let entries = [];
   let editing = null;
   let busy = true;
   const weekdays = ["月", "火", "水", "木", "金", "土", "日"];
+  const selector = $("timetable-preset");
+  selector.replaceChildren(...[
+    ...config.periodPresets.map(({ period }) => ({ value: period, text: period })),
+    { value: "", text: "その他（手入力）" },
+  ].map(({ value, text }) => {
+    const option = document.createElement("option");
+    option.value = value;
+    option.textContent = text;
+    return option;
+  }));
+  function selectPeriod(applyTimes) {
+    const fields = $("timetable-form").elements;
+    const preset = config.periodPresets.find((item) => item.period === selector.value);
+    fields.period.hidden = Boolean(preset);
+    $("timetable-period-label").hidden = Boolean(preset);
+    if (preset) {
+      fields.period.value = preset.period;
+      if (applyTimes) {
+        fields.start.value = preset.start;
+        fields.end.value = preset.end;
+      }
+    }
+  }
+  selector.addEventListener("change", () => selectPeriod(true));
   function reset() {
     editing = null;
     $("timetable-form").reset();
+    selectPeriod(true);
     $("timetable-submit").textContent = "時間割を追加";
   }
   function render() {
     $("timetable-form").querySelectorAll("input, select, button").forEach((node) => { node.disabled = busy; });
-    $("timetable-list").replaceChildren(...entries.map((entry) => {
+    $("timetable-list").replaceChildren(...sortTimetableEntries(entries).map((entry) => {
       const row = document.createElement("li");
       const label = document.createElement("p");
       label.textContent = `${weekdays[entry.day - 1]}曜 ${entry.period}：${entry.className} ${entry.start}〜${entry.end}`;
@@ -24,8 +50,10 @@ export function createTimetableEditor({ save }) {
       edit.addEventListener("click", () => {
         editing = entry.id;
         for (const field of ["day", "period", "className", "start", "end"]) $("timetable-form").elements[field].value = entry[field];
+        selector.value = config.periodPresets.some((item) => item.period === entry.period) ? entry.period : "";
+        selectPeriod(false);
         $("timetable-submit").textContent = "変更を保存";
-        $("timetable-form").elements.period.focus();
+        selector.focus();
       });
       const remove = document.createElement("button");
       remove.type = "button";
@@ -57,6 +85,7 @@ export function createTimetableEditor({ save }) {
       if (await save(next)) reset();
     } catch (error) { $("timetable-status").textContent = error.message; }
   });
+  reset();
   render();
   return {
     setRecord(value) { entries = value?.entries || []; render(); },

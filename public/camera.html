@@ -99,6 +99,13 @@
             <input id="session-number" type="number" min="1" step="1" inputmode="numeric" placeholder="自動">
             <button id="refresh-folders" type="button" disabled>ドライブの一覧を再取得</button>
           </details>
+          <section id="camera-options" aria-labelledby="camera-info-title">
+            <h3 id="camera-info-title">カメラ情報</h3>
+            <p id="capture-diagnostics">撮影結果はまだありません。</p>
+            <p id="camera-diagnostics">カメラ開始後に表示します。</p>
+            <p id="resolution">映像：未取得</p>
+            <p id="request">要求：背面カメラ・高解像度</p>
+          </section>
       <button id="open-timetable" type="button" disabled aria-controls="timetable-panel">時間割を編集</button>
       <section id="timetable-panel" hidden aria-labelledby="timetable-title">
         <h3 id="timetable-title">時間割（日本時間）</h3>
@@ -110,7 +117,8 @@
         <form id="timetable-form">
           <label for="timetable-day">曜日</label>
           <select id="timetable-day" name="day"><option value="1">月</option><option value="2">火</option><option value="3">水</option><option value="4">木</option><option value="5">金</option><option value="6">土</option><option value="7">日</option></select>
-          <label for="timetable-period">時限（表示名）</label><input id="timetable-period" name="period" required placeholder="1限">
+          <label for="timetable-preset">時限</label><select id="timetable-preset" name="preset"></select>
+          <label id="timetable-period-label" for="timetable-period">時限（表示名）</label><input id="timetable-period" name="period" required placeholder="その他の時限名">
           <label for="timetable-class">授業名</label><input id="timetable-class" name="className" required autocomplete="off" list="class-list">
           <label for="timetable-start">開始時刻</label><input id="timetable-start" name="start" type="time" required step="60">
           <label for="timetable-end">終了時刻</label><input id="timetable-end" name="end" type="time" required step="60">
@@ -118,13 +126,7 @@
           <button id="timetable-reset" type="button">入力を取り消す</button>
         </form>
       </section>
-          <details id="camera-options">
-            <summary>カメラ情報</summary>
-            <p id="capture-diagnostics">撮影結果はまだありません。</p>
-            <p id="camera-diagnostics">カメラ開始後に表示します。</p>
-            <p id="resolution">映像：未取得</p>
-            <p id="request">要求：背面カメラ・高解像度</p>
-          </details>
+
           <p class="note">映像を2本の指で広げると拡大、狭めると縮小できます（ズーム対応時）。</p>
           <p id="preference-status" role="status"></p>
           <p class="version">版：<span data-app-version>開発版</span></p>
