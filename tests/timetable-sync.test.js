@@ -76,3 +76,22 @@ test("再起動しても当日の同時限は手動選択を優先し、翌週�
   assert.equal(selectLesson(entries, "2026-10-12T09:40:00+09:00", manual).className, "数学");
   reopened.close();
 });
+
+
+test("一括読み込みの有効行をIndexedDBへ保存し、通信復帰でDriveへ同期する", async () => {
+  const { parseTimetableImport, applyTimetableImport } = await import("../public/timetable-import.js");
+  const { sync, state, store } = await setup(null, null, false);
+  const parsed = parseTimetableImport("月 1限 架空の授業A\n土 18:00-19:30 架空の授業B\n火 8限 架空の授業C");
+  const imported = applyTimetableImport([], parsed.entries, "add");
+  await sync.save(imported);
+  assert.deepEqual((await store.readTimetable()).entries, imported);
+  assert.equal(state.remote, null);
+  state.online = true;
+  await sync.load();
+  assert.deepEqual(state.remote.entries, imported);
+  const replacement = applyTimetableImport(imported, parseTimetableImport("日 7限 架空の授業D").entries, "replace");
+  await sync.save(replacement);
+  assert.deepEqual(state.remote.entries, replacement);
+  assert.deepEqual((await store.readTimetable()).entries, replacement);
+  store.close();
+});
