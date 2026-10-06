@@ -40,9 +40,9 @@
       </section>
       <section id="image-screen" class="screen review" aria-label="撮影画像の確認" hidden>
         <header class="review-header">
-          <div class="review-top"><button id="back" type="button" aria-label="保存せず撮り直す">撮り直す</button><button id="review-options" type="button" aria-label="授業と回を変更" aria-controls="options-panel">授業を選ぶ</button><button id="actual-size" type="button" aria-label="画像を等倍で確認" aria-pressed="false"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10" cy="10" r="7"/><path d="m15 15 7 7M6 10h8m-4-4v8"/></svg><span>等倍</span></button></div>
+          <div class="review-top"><button id="back" type="button" aria-label="保存せず撮り直す">撮り直す</button><button id="review-options" type="button" aria-label="授業と回を変更" aria-controls="options-panel">授業を選ぶ</button><button id="actual-size" type="button" aria-label="画像を等倍で確認" aria-pressed="false"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10" cy="10" r="7"/><path d="m15 15 7 7M6 10h8m-4-4v8"/></svg><span>等倍</span></button><button id="image-info" type="button" aria-label="画像の情報を表示" aria-expanded="false"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 10v7m0-11v1"/></svg></button></div>
           <div class="review-actions"><button id="crop-auto" type="button" aria-label="四隅を自動検出し直す"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 3H3v5m13-5h5v5M3 16v5h5m8 0h5v-5M8 12h8m-4-4v8"/></svg><span>自動</span></button><button id="crop-reset" type="button" aria-label="画像全体を枠にする"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 3h18v18H3Z"/></svg><span>全体</span></button><button id="crop-preview" type="button" aria-label="補正プレビューを切り替える"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/></svg><span>プレビュー</span></button><button id="save-image" type="button" aria-label="補正して保存">保存</button></div>
-          <button id="image-info" type="button" aria-label="画像の情報を表示" aria-expanded="false"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 10v7m0-11v1"/></svg></button>
+
           <div id="image-info-panel" hidden><p id="image-resolution"></p><p id="image-camera"></p><p id="image-destination"></p><label for="corner-selection">動かす隅</label><select id="corner-selection"><option value="0">左上</option><option value="1">右上</option><option value="2">右下</option><option value="3">左下</option></select><button id="crop-nudge" type="button" aria-label="選んだ隅を少し内側へ">選んだ隅を少し内側へ</button></div>
           <div id="review-toast" role="status" hidden></div><p id="save-status" class="sr-only" role="status"></p><p id="crop-status" class="sr-only" role="status"></p><p id="crop-hint" hidden></p>
           <button id="crop-edit" type="button" hidden aria-label="調整に戻る">調整に戻る</button><button id="crop-cancel" type="button" hidden aria-label="補正を中断">補正を中断</button>
@@ -62,9 +62,9 @@
       </section>
     </main>
     <dialog id="options-panel" aria-labelledby="options-title">
-      <h2 id="options-title">設定</h2><button id="settings-back" type="button" hidden aria-label="戻る">戻る</button>
+      <div id="sheet-grip" aria-hidden="true"><span></span></div>
+      <header class="sheet-header"><button id="settings-back" type="button" hidden aria-label="戻る">戻る</button><h2 id="options-title">設定</h2><button id="close-options" type="button" aria-label="設定を閉じる">完了</button></header>
       <nav id="settings-menu" aria-label="設定項目"><button data-settings-page="save-options" aria-label="授業と保存先 選択 ›">授業と保存先 <span><span id="settings-destination">未選択</span> ›</span></button><button id="open-timetable" type="button" disabled aria-controls="timetable-panel" aria-label="時間割 編集 ›">時間割 <span><span id="settings-timetable">編集</span> ›</span></button><button data-settings-page="account-options" aria-label="Googleアカウント ログイン ›">Googleアカウント <span><span id="settings-account">未ログイン</span> ›</span></button><button data-settings-page="camera-options" aria-label="撮影 カメラ情報 ›">撮影 <span><span id="settings-camera">未開始</span> ›</span></button><button data-settings-page="app-options" aria-label="アプリ 版・更新 ›">アプリ <span><span id="settings-app">更新状態</span> ›</span></button></nav>
-      <button id="close-options" type="button" aria-label="設定を閉じる">設定を閉じる</button>
           <section id="save-options" data-settings-detail hidden>
             <h3>授業と保存先</h3><p id="destination-message" role="status"></p>
             <label for="class-name">授業名（一覧から選ぶか入力）</label>

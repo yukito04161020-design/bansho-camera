@@ -107,6 +107,8 @@ test("撮影画面は倍率を戻して自動再開し、確認中は画像・�
     await store.writeCaptureSettings({ classes: ["数学"], lessons: [{ className: "数学", names: [] }] });
     await import("../public/capture-app.js");
     await until(() => $("timetable-status").textContent?.includes("端末内の時間割") && !$("apply-class").disabled);
+    assert.equal($("capture-reason").hidden, true, "開始前は撮影不可理由を表示しない");
+    assert.equal($("zoom-buttons").hidden, true, "開始前は倍率を表示しない");
     $("class-name").value = "数学"; $("apply-class").click();
     await until(() => !$("apply-class").disabled && $("destination-status").textContent.includes("数学"));
     $("session-number").value = "7"; $("session-number").dispatchEvent(new Event("input"));

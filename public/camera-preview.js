@@ -193,7 +193,7 @@ function updateVideoState() {
   captureButton.disabled = Boolean(reason);
   captureButton.classList.toggle("busy", Boolean(captureController));
   const explanation = document.querySelector("#capture-reason");
-  if (explanation) { explanation.textContent = reason; explanation.hidden = !reason; }
+  if (explanation) { explanation.textContent = reason; explanation.hidden = !reason || (!stream && !starting && !captureController); }
   zoomSlider.disabled = Boolean(captureController) || !ready || !range || range.max <= range.min;
   video.classList.toggle("zoom-enabled", !zoomSlider.disabled);
   if (cameraSelect) cameraSelect.disabled = starting || cameraSelect.options.length <= 1;

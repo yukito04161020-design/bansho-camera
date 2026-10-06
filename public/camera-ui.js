@@ -1,12 +1,10 @@
 import { bindLiveOutline } from "./live-outline.js";
+import { createToast, bindSheetDrag } from "./ui-feedback.js";
 const $ = id => document.getElementById(id);
-let toastTimer;
+let notify;
 export function showToast(text) {
-  if (!text) return;
-  const toast = $("image-screen").hidden ? $("toast") : $("review-toast");
-  $("toast").hidden = true; $("review-toast").hidden = true;
-  toast.textContent = text; toast.hidden = false;
-  clearTimeout(toastTimer); toastTimer = setTimeout(() => { toast.hidden = true; }, 3500);
+  notify ??= createToast({ nodes: [$("toast"), $("review-toast")], select: () => $("image-screen").hidden ? $("toast") : $("review-toast") });
+  notify(text);
 }
 export function showSettingsPage(id) {
   document.querySelectorAll("[data-settings-detail]").forEach(node => { node.hidden = node.id !== id; });
@@ -20,6 +18,7 @@ export function zoomStops(min, max) {
   return values;
 }
 export function initializeCameraUi() {
+  bindSheetDrag({ grip: $("sheet-grip"), sheet: $("options-panel") });
   document.querySelectorAll("[data-settings-page]").forEach(button => button.addEventListener("click", () => showSettingsPage(button.dataset.settingsPage)));
   $("settings-back").addEventListener("click", () => showSettingsPage(null));
   $("open-timetable").addEventListener("click", () => showSettingsPage("timetable-panel"));
@@ -40,7 +39,10 @@ export function initializeCameraUi() {
       }));
     }
     for (const button of group.children) { button.disabled = zoom.disabled; button.setAttribute("aria-pressed", String(Math.abs(Number(button.dataset.zoom) - Number(zoom.value)) < .05)); }
-    $("camera-start").hidden = Boolean($("camera").srcObject) && $("camera").readyState >= 2 && !$("camera").paused;
+    const ready = Boolean($("camera").srcObject) && $("camera").readyState >= 2 && !$("camera").paused;
+    $("camera-start").hidden = ready;
+    group.hidden = !ready;
+    if (!ready) zoom.hidden = true;
   }
   group.addEventListener("pointerdown", event => { origin = event.clientX; adjusting = false; hold = setTimeout(() => { adjusting = true; zoom.hidden = false; }, 450); });
   group.addEventListener("pointermove", event => { if (origin !== undefined && Math.abs(event.clientX - origin) > 12) { adjusting = true; zoom.hidden = false; } });

@@ -67,3 +67,16 @@ test("倍率候補は能力範囲内の2〜5個に収める", () => {
   assert.deepEqual(zoomStops(1.2, 1.8), [1.2, 1.8]);
   assert.deepEqual(zoomStops(1, 1), [1]);
 });
+
+test("画面確認後の配置は透明28px輪・縮まないアイコン・上端の完了ボタンを使う", async () => {
+  const html = await readFile(new URL("../public/camera.html", import.meta.url), "utf8");
+  const css = await readFile(new URL("../public/capture.css", import.meta.url), "utf8");
+  assert.match(css, /\.crop-corner::before\s*\{[^}]*width: 28px;[^}]*height: 28px;[^}]*border: 3px solid #fff;[^}]*background: transparent;/);
+  assert.match(css, /\.crop-corner\[aria-pressed="true"\]::before\s*\{ border-color: #FFD60A;/);
+  assert.match(css, /button svg\s*\{ flex-shrink: 0;/);
+  for (const id of ["crop-auto", "crop-reset", "crop-preview"]) assert.match(html, new RegExp(`id="${id}"[^>]*><svg`));
+  assert.match(html, /class="review-top"[\s\S]*?id="image-info"[\s\S]*?<\/div>/);
+  assert.match(html, /class="sheet-header"[\s\S]*?id="close-options"[^>]*>完了<\/button><\/header>/);
+  assert.match(html, /id="sheet-grip"/);
+  assert.match(css, /#camera-screen \.top\s*\{ left: auto; right: 0;/);
+});
