@@ -191,6 +191,7 @@ function updateVideoState() {
     !video.paused && video.readyState >= 2 && video.videoWidth > 0 && video.videoHeight > 0);
   const reason = captureDisabledReason({ starting, hidden: document.hidden, ready, zoomApplying, blocked: captureController ? "撮影中…" : captureBlocked });
   captureButton.disabled = Boolean(reason);
+  captureButton.classList.toggle("busy", Boolean(captureController));
   const explanation = document.querySelector("#capture-reason");
   if (explanation) { explanation.textContent = reason; explanation.hidden = !reason; }
   zoomSlider.disabled = Boolean(captureController) || !ready || !range || range.max <= range.min;
@@ -442,6 +443,9 @@ for (const event of ["loadeddata", "playing", "resize", "pause", "waiting"]) {
 
 captureButton.addEventListener("click", async () => {
   if (!imageScreen.hidden || cameraScreen.hidden || captureButton.disabled || captureController || starting || document.hidden) return;
+  cameraScreen.classList.remove("flash");
+  void cameraScreen.offsetWidth;
+  cameraScreen.classList.add("flash");
   const controller = new AbortController();
   captureController = controller;
   const current = generation;
@@ -480,7 +484,7 @@ captureButton.addEventListener("click", async () => {
 sizeButton.addEventListener("click", () => {
   const actual = imageArea.classList.toggle("actual-size");
   sizeButton.setAttribute("aria-pressed", String(actual));
-  sizeButton.textContent = actual ? "画面に合わせる" : "等倍で確認";
+  sizeButton.setAttribute("aria-label", actual ? "画像を画面に合わせる" : "画像を等倍で確認");
   imageArea.scrollTo(0, 0);
 });
 
@@ -491,7 +495,7 @@ export function returnToCamera() {
   canvas.height = 0;
   imageArea.classList.remove("actual-size");
   sizeButton.setAttribute("aria-pressed", "false");
-  sizeButton.textContent = "等倍で確認";
+  sizeButton.setAttribute("aria-label", "画像を等倍で確認");
   startButton.focus();
   void startCamera();
 }

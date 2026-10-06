@@ -11,10 +11,11 @@ async function until(check) {
 function environment(devices = [{ deviceId: "dual", label: "背面デュアル広角カメラ", zoom: true }]) {
   const elements = new Map(), requests = [], applied = [];
   let cuts = 0, running = 0;
+  const serialized = [];
   class Element extends EventTarget {
     constructor(id) {
       super(); this.id = id; this.hidden = false; this.open = false; this.disabled = false;
-      this.value = ""; this.textContent = ""; this.width = 80; this.height = 60; this.children = [];
+      this.value = ""; this.textContent = ""; this.width = 80; this.height = 60; this.children = []; this.dataset = {};
       this.clientWidth = 800; this.clientHeight = 400;
       this.style = { setProperty() {} };
       const classes = new Set();
@@ -28,6 +29,7 @@ function environment(devices = [{ deviceId: "dual", label: "背面デュアル�
     append(...children) { this.children.push(...children); }
     replaceChildren(...children) { this.children = children; }
     querySelectorAll() { return []; }
+    querySelector() { return new Element("polygon"); }
     focus() {}
     scrollTo(x, y) { this.scrollLeft = x; this.scrollTop = y; }
     setPointerCapture() {}
@@ -40,6 +42,7 @@ function environment(devices = [{ deviceId: "dual", label: "背面デュアル�
         getImageData() { return { width: 80, height: 60, data: new Uint8ClampedArray(80 * 60 * 4).fill(125) }; },
         putImageData() {} };
     }
+    toBlob(callback, type) { serialized.push(this.id); callback(new Blob(["corrected"], { type })); }
     click() { const e = new Event("click", { cancelable: true }); this.dispatchEvent(e); if (!e.defaultPrevented) this.onclick?.(e); }
   }
   function element(id) { if (!elements.has(id)) elements.set(id, new Element(id)); return elements.get(id); }
@@ -72,9 +75,9 @@ function environment(devices = [{ deviceId: "dual", label: "背面デュアル�
       return { getVideoTracks: () => [track], getTracks: () => [track] };
     },
   } };
-  const originals = new Map(["document", "window", "navigator", "indexedDB", "ImageData", "requestAnimationFrame", "cancelAnimationFrame", "ResizeObserver"]
+  const originals = new Map(["document", "window", "navigator", "indexedDB", "ImageData", "requestAnimationFrame", "cancelAnimationFrame", "ResizeObserver", "MutationObserver"]
     .map(key => [key, Object.getOwnPropertyDescriptor(globalThis, key)]));
-  const globals = { ResizeObserver: class { observe() {} }, document: doc, window: win, navigator: nav, indexedDB: new IDBFactory(),
+  const globals = { MutationObserver: class { observe() {} }, ResizeObserver: class { observe() {} }, document: doc, window: win, navigator: nav, indexedDB: new IDBFactory(),
     ImageData: class { constructor(data, width, height) { Object.assign(this, { data, width, height }); } },
     requestAnimationFrame: callback => setTimeout(callback, 0), cancelAnimationFrame: clearTimeout };
   for (const [key, value] of Object.entries(globals)) Object.defineProperty(globalThis, key, { configurable: true, writable: true, value });
@@ -85,7 +88,7 @@ function environment(devices = [{ deviceId: "dual", label: "背面デュアル�
   Object.assign(element("camera"), { videoWidth: 80, videoHeight: 60, readyState: 2, paused: true });
   element("capture").disabled = true;
   element("apply-class").disabled = true;
-  return { doc, win, element, requests, applied, cuts: () => cuts, running: () => running,
+  return { doc, win, element, requests, applied, serialized, cuts: () => cuts, running: () => running,
     visibility(hidden) { doc.hidden = hidden; doc.visibilityState = hidden ? "hidden" : "visible"; doc.dispatchEvent(new Event("visibilitychange")); },
     restore() { for (const [key, descriptor] of originals) { if (descriptor) Object.defineProperty(globalThis, key, descriptor); else delete globalThis[key]; } } };
 }
@@ -145,6 +148,22 @@ test("撮影画面は倍率を戻して自動再開し、確認中は画像・�
     assert.equal($("image-area").scrollLeft, 0); assert.equal($("image-area").scrollTop, 0);
     assert.equal(env.cuts(), cuts); assert.equal(env.requests.length, opens);
     assert.equal($("camera-comparison").open, false);
+    // プレビューなしの保存でも補正後キャンバスだけをJPEG化する。
+    assert.equal($("image-stage").hidden, false);
+    $("save-image").click();
+    await until(() => $("image-screen").hidden && !$("capture").disabled);
+    assert.deepEqual(env.serialized, ["cropped-image"]);
+    assert.equal(await store.count(), 1);
+    // 保存先未確定での保存クリックはシートを出し、補正・保存しない。
+    $("class-name").value = "架空の未確認授業"; $("apply-class").click();
+    await until(() => !$("apply-class").disabled);
+    $("capture").click(); await until(() => !$("save-image").disabled);
+    $("save-image").click();
+    assert.equal($("options-panel").open, true);
+    assert.equal($("save-options").hidden, false);
+    assert.equal($("image-screen").hidden, false);
+    assert.deepEqual(env.serialized, ["cropped-image"]);
+    assert.equal(await store.count(), 1);
   } finally { env.visibility(true); await pause(); store.close(); env.restore(); }
 });
 

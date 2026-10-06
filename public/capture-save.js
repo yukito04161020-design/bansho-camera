@@ -46,7 +46,7 @@ export async function saveCapturedImage({ canvas, destination, enqueue }) {
 export function createCapturedDraft(capturedAt, resolveDestination) {
   let destination = null;
   let fixedAtCapture = false;
-  const draft = { capturedAt, get destination() { return destination; },
+  const draft = { capturedAt, reselect() { fixedAtCapture = false; return this.resolve(); }, get destination() { return destination; },
     resolve() {
       if (!fixedAtCapture) {
         try { destination = resolveDestination(capturedAt); } catch { destination = null; }
