@@ -58,11 +58,10 @@ export function createCapturedDraft(capturedAt, resolveDestination) {
   return draft;
 }
 
-export function captureDisabledReason({ starting, hidden, ready, zoomApplying, blocked }) {
+export function captureDisabledReason({ starting, hidden, ready, blocked }) {
   if (blocked) return typeof blocked === "string" ? blocked : "撮影の準備中です。しばらくお待ちください。";
   if (hidden) return "画面に戻ってカメラを開始してください。";
   if (starting) return "カメラを準備しています。しばらくお待ちください。";
   if (!ready) return "カメラを開始し、映像が動くまでお待ちください。";
-  if (zoomApplying) return "倍率を変更しています。反映後に撮影できます。";
   return "";
 }

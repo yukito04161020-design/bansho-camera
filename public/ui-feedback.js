@@ -29,6 +29,28 @@ export function toastMessage(text) {
   return text.length <= 28 ? text : "操作を確認してください";
 }
 
+// 不可理由の短い入れ替わりは隠し、同じ理由が400ms続いたときだけ表示する。
+export function createStableReason({ show, schedule = setTimeout, cancel = clearTimeout }) {
+  let reason = "", timer;
+  return (value) => {
+    if (value === reason) return;
+    reason = value;
+    cancel(timer);
+    show("");
+    if (reason) timer = schedule(() => { show(reason); }, 400);
+  };
+}
+
+export function createZoomFailureNotice({ notify, now = () => performance.now() }) {
+  let lastShown = -Infinity;
+  return () => {
+    const time = now();
+    if (time - lastShown < 5000) return;
+    lastShown = time;
+    notify("倍率の変更に失敗しました。再試行してください。");
+  };
+}
+
 export function createToast({ nodes, select, schedule = setTimeout, cancel = clearTimeout }) {
   let timer, actionable = false;
   return (text, action) => {

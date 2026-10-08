@@ -36,7 +36,7 @@
             <button id="open-options" type="button" aria-label="設定を開く" aria-controls="options-panel"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 3 6 0 1 3 3 1 2 5-2 5-3 1-1 3H9l-1-3-3-1-2-5 2-5 3-1Z"/><circle cx="12" cy="12" r="4"/></svg><span id="update-dot" hidden>•</span></button>
           </div>
         </div>
-        <p id="camera-name" hidden></p><p id="zoom-status" hidden></p>
+        <p id="camera-name" hidden></p>
       </section>
       <section id="image-screen" class="screen review" aria-label="撮影画像の確認" hidden>
         <header class="review-header">
@@ -85,6 +85,7 @@
             <h3 id="camera-info-title">撮影</h3><label><input id="photos-enabled" type="checkbox" checked> 保存のたびに写真への保存も案内する</label><label><input id="overlay-enabled" type="checkbox" checked> 板面の枠を表示</label>
             <p id="capture-diagnostics">撮影結果はまだありません。</p>
             <p id="camera-diagnostics">カメラ開始後に表示します。</p>
+            <p id="zoom-status">倍率：カメラ開始後に表示します。</p>
             <p id="resolution">映像：未取得</p>
             <p id="request">要求：背面カメラ・高解像度</p><button id="stop" type="button" disabled aria-label="カメラを停止">カメラを停止</button>
           </section>

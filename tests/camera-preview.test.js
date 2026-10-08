@@ -10,7 +10,7 @@ async function until(check) {
 }
 function environment(devices = [{ deviceId: "dual", label: "背面デュアル広角カメラ", zoom: true }]) {
   const elements = new Map(), requests = [], applied = [];
-  let cuts = 0, running = 0;
+  let cuts = 0, running = 0, changeZoom;
   const serialized = [];
   class Element extends EventTarget {
     constructor(id) {
@@ -70,7 +70,9 @@ function environment(devices = [{ deviceId: "dual", label: "背面デュアル�
       Object.assign(track, { label: device.label, readyState: "live", muted: false,
         getSettings: () => ({ deviceId: device.deviceId, facingMode: "environment", zoom }),
         getCapabilities: () => ({ width: { max: 80 }, height: { max: 60 }, ...(device.zoom ? { zoom: { min: 1, max: 10, step: 0.1 } } : {}) }),
-        getConstraints: () => ({}), applyConstraints: async c => { if (c.advanced) { zoom = c.advanced.at(-1).zoom; applied.push(zoom); } },
+        getConstraints: () => ({}), applyConstraints: async c => {
+          if (c.advanced) { const value = c.advanced.at(-1).zoom; await changeZoom?.(value); zoom = value; applied.push(zoom); }
+        },
         stop() { if (!stopped) { stopped = true; running--; track.readyState = "ended"; } } });
       return { getVideoTracks: () => [track], getTracks: () => [track] };
     },
@@ -89,6 +91,7 @@ function environment(devices = [{ deviceId: "dual", label: "背面デュアル�
   element("capture").disabled = true;
   element("apply-class").disabled = true;
   return { doc, win, element, requests, applied, serialized, cuts: () => cuts, running: () => running,
+    onZoom(callback) { changeZoom = callback; },
     visibility(hidden) { doc.hidden = hidden; doc.visibilityState = hidden ? "hidden" : "visible"; doc.dispatchEvent(new Event("visibilitychange")); },
     restore() { for (const [key, descriptor] of originals) { if (descriptor) Object.defineProperty(globalThis, key, descriptor); else delete globalThis[key]; } } };
 }
@@ -206,14 +209,14 @@ test("開始待ちの間に裏へ移ってすぐ戻っても自動再開し、�
 });
 
 
-test("複数コマ撮影中は理由を表示して操作を止め、hiddenでは確認画面へ進まず撮り直せる", async () => {
+test("短い複数コマ撮影中は理由を隠して操作を止め、hiddenでは確認画面へ進まず撮り直せる", async () => {
   const env = environment(); const $ = env.element;
   try {
     await import("../public/camera-preview.js?sharpest-hidden-test");
     $("start").click(); await until(() => !$("capture").disabled);
     $("capture").click();
     assert.equal($("capture").disabled, true);
-    assert.equal($("capture-reason").textContent, "撮影中…");
+    assert.equal($("capture-reason").hidden, true);
     assert.equal($("zoom").disabled, true);
     // 待機が終わって最初のコマが取得されてから中断する。
     await until(() => env.cuts() >= 2);
@@ -225,5 +228,85 @@ test("複数コマ撮影中は理由を表示して操作を止め、hiddenで�
     $("capture").click();
     await until(() => !$("image-screen").hidden);
     assert.match($("capture-diagnostics").textContent, /4コマ.*1コマ目.*最小.*最大/);
+  } finally { env.visibility(true); await pause(); env.restore(); }
+});
+
+test("倍率反映中も撮影ボタンの見た目を保ち、反映後に1回だけ撮影する", async () => {
+  const env = environment(); const $ = env.element;
+  let release;
+  try {
+    await import("../public/camera-preview.js?zoom-capture-test");
+    $("start").click(); await until(() => !$("capture").disabled);
+    const previousStatus = $("zoom-status").textContent;
+    env.onZoom(() => new Promise(resolve => { release = resolve; }));
+    $("zoom").value = "3"; $("zoom").dispatchEvent(new Event("input"));
+    await until(() => release);
+    assert.equal($("zoom-status").textContent, previousStatus, "途中の倍率は説明に表示しない");
+    assert.equal($("capture").disabled, false);
+    assert.equal($("capture").classList.contains("busy"), false);
+    assert.equal($("capture-reason").hidden, true);
+    $("capture").click(); $("capture").click();
+    await pause();
+    assert.equal(env.cuts(), 0);
+    assert.equal($("capture").disabled, false);
+    assert.equal($("capture").classList.contains("busy"), false);
+    assert.equal($("capture-reason").hidden, true);
+    release();
+    await until(() => !$("image-screen").hidden);
+    assert.equal(env.applied.at(-1), 3);
+    assert.match($("image-camera").textContent, /倍率：3×/);
+    assert.equal($("capture-diagnostics").textContent.includes("4コマ"), true);
+  } finally { release?.(); env.visibility(true); await pause(); env.restore(); }
+});
+
+test("倍率反映が終わらなくても500ms後には現在の映像で撮影する", async () => {
+  const env = environment(); const $ = env.element;
+  let release;
+  try {
+    await import("../public/camera-preview.js?zoom-timeout-test");
+    $("start").click(); await until(() => !$("capture").disabled);
+    env.onZoom(() => new Promise(resolve => { release = resolve; }));
+    $("zoom").value = "4"; $("zoom").dispatchEvent(new Event("input"));
+    await until(() => release);
+    $("capture").click();
+    assert.equal(env.cuts(), 0);
+    await until(() => !$("image-screen").hidden);
+    assert.equal(env.applied.at(-1), 1, "未反映のままでも確認画面へ進む");
+    assert.match($("capture-diagnostics").textContent, /4コマ/);
+  } finally { release?.(); env.visibility(true); await pause(); env.restore(); }
+});
+
+test("倍率待機中に裏へ移ったら撮影を中断し、遅い反映で撮影しない", async () => {
+  const env = environment(); const $ = env.element;
+  let release;
+  try {
+    await import("../public/camera-preview.js?zoom-abort-test");
+    $("start").click(); await until(() => !$("capture").disabled);
+    env.onZoom(() => new Promise(resolve => { release = resolve; }));
+    $("zoom").value = "3"; $("zoom").dispatchEvent(new Event("input"));
+    await until(() => release);
+    $("capture").click(); env.visibility(true); release();
+    await pause();
+    assert.equal(env.cuts(), 0);
+    assert.equal($("image-screen").hidden, true);
+  } finally { release?.(); env.visibility(true); await pause(); env.restore(); }
+});
+
+test("倍率変更失敗の通知は連続操作でも1回だけ送る", async () => {
+  const env = environment(); const $ = env.element;
+  const errors = [];
+  env.doc.addEventListener("bansho-zoom-error", event => errors.push(event.detail));
+  try {
+    await import("../public/camera-preview.js?zoom-failure-test");
+    $("start").click(); await until(() => !$("capture").disabled);
+    const previousStatus = $("zoom-status").textContent;
+    env.onZoom(() => { throw new Error("倍率変更失敗"); });
+    for (const value of [3, 4, 5]) {
+      $("zoom").value = String(value); $("zoom").dispatchEvent(new Event("input"));
+      await until(() => Number($("zoom").value) === 1);
+    }
+    assert.deepEqual(errors, ["倍率の変更に失敗しました。再試行してください。"]);
+    assert.equal($("zoom-status").textContent, previousStatus);
+    assert.equal($("capture").disabled, false);
   } finally { env.visibility(true); await pause(); env.restore(); }
 });

@@ -1,6 +1,33 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { createLiveZoom, createPinchZoom } from "../public/camera-zoom.js";
+import { createLiveZoom, createPinchZoom, waitForZoom } from "../public/camera-zoom.js";
+
+test("倍率反映を待ち、未反映でも500msちょうどで待機を終える", async t => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  let time = 0, busy = true, finished = false;
+  const waiting = waitForZoom({ isBusy: () => busy, now: () => time }).then(() => { finished = true; });
+  time = 499; t.mock.timers.tick(499); await Promise.resolve();
+  assert.equal(finished, false);
+  time = 500; t.mock.timers.tick(1); await waiting;
+  assert.equal(finished, true);
+  finished = false;
+  const next = waitForZoom({ isBusy: () => busy, now: () => time }).then(() => { finished = true; });
+  time += 100; t.mock.timers.tick(100); await Promise.resolve();
+  assert.equal(finished, false);
+  busy = false; time += 10; t.mock.timers.tick(10); await next;
+  assert.equal(finished, true);
+});
+
+test("倍率待機は中断でタイマーを解除し、すでに中断済みでも撮影を待たない", async t => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const controller = new AbortController();
+  const waiting = waitForZoom({ isBusy: () => true, signal: controller.signal, now: () => 0 });
+  controller.abort();
+  await assert.rejects(waiting, { name: "AbortError" });
+  t.mock.timers.tick(500);
+  await assert.rejects(waitForZoom({ isBusy: () => false, signal: controller.signal }), { name: "AbortError" });
+  await waitForZoom({ isBusy: () => false });
+});
 
 const range = { min: 1, max: 8, step: 0.5 };
 function deferred() {

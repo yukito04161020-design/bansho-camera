@@ -1,5 +1,26 @@
 import { normalizeZoom } from "./camera-options.js";
 
+// 反映が止まっていても500msで現在の映像を使う。裏へ移る場合は待機も中断する。
+export function waitForZoom({ isBusy, signal, now = () => performance.now(), schedule = setTimeout, cancel = clearTimeout }) {
+  const deadline = now() + 500;
+  return new Promise((resolve, reject) => {
+    let timer;
+    function finish(error) {
+      cancel(timer);
+      signal?.removeEventListener("abort", abort);
+      if (error) reject(error); else resolve();
+    }
+    const abort = () => finish(new DOMException("撮影を中止しました。", "AbortError"));
+    function check() {
+      if (signal?.aborted) return abort();
+      if (!isBusy() || now() >= deadline) return finish();
+      timer = schedule(check, Math.min(10, deadline - now()));
+    }
+    signal?.addEventListener("abort", abort, { once: true });
+    check();
+  });
+}
+
 // applyConstraintsは重ねず、処理中の入力は最新の倍率だけ残す。
 export function createLiveZoom({ range, initialZoom, applyZoom, onRequested, onApplied, onError, onBusy,
   scheduleFrame = requestAnimationFrame, cancelFrame = cancelAnimationFrame }) {

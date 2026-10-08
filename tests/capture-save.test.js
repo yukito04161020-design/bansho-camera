@@ -125,7 +125,8 @@ test("撮影不可のすべての状態に日本語の理由を返し、撮影�
   const { captureDisabledReason } = await import("../public/capture-save.js");
   const ready = { ready: true };
   assert.equal(captureDisabledReason(ready), "");
-  for (const state of [{ starting: true }, { hidden: true }, { ready: false }, { zoomApplying: true }, { blocked: true }]) {
+  assert.equal(captureDisabledReason({ ...ready, zoomApplying: true }), "", "倍率変更中も撮影できる");
+  for (const state of [{ starting: true }, { hidden: true }, { ready: false }, { blocked: true }]) {
     assert.match(captureDisabledReason({ ...ready, ...state }), /[ぁ-んァ-ヶ一-龠]/);
   }
   assert.equal(captureDisabledReason({ ...ready, blocked: "画像を保存しています。" }), "画像を保存しています。");
