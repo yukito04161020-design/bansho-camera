@@ -27,11 +27,11 @@
         <div id="toast" role="status" hidden></div>
         <div id="camera-start"><button id="start" type="button" aria-label="カメラを開始">カメラを開始</button><p>カメラの使用を許可してください。</p></div>
         <div class="overlay bottom">
-          <div id="zoom-buttons" aria-label="撮影倍率"></div>
+          <output id="zoom-value" aria-label="現在の倍率">1.0×</output><div id="zoom-buttons" aria-label="撮影倍率"></div>
           <input id="zoom" aria-label="細かい撮影倍率" type="range" min="1" max="1" step="1" value="1" disabled hidden>
           <p id="capture-reason" role="status"></p>
           <div class="shutter-row">
-            <button id="last-image" type="button" aria-label="直前の撮影画像を確認" disabled><canvas id="thumbnail" width="64" height="64"></canvas><span id="thumbnail-pending" hidden>•</span></button>
+            <button id="last-image" type="button" aria-label="直前の画像を写真に保存" disabled><canvas id="thumbnail" width="64" height="64"></canvas><span id="thumbnail-photo" hidden>写真に保存</span><span id="thumbnail-pending" hidden>•</span></button>
             <button id="capture" aria-label="板書を撮影" aria-describedby="capture-reason" type="button" disabled><span class="sr-only">撮影</span></button>
             <button id="open-options" type="button" aria-label="設定を開く" aria-controls="options-panel"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 3 6 0 1 3 3 1 2 5-2 5-3 1-1 3H9l-1-3-3-1-2-5 2-5 3-1Z"/><circle cx="12" cy="12" r="4"/></svg><span id="update-dot" hidden>•</span></button>
           </div>
@@ -82,7 +82,7 @@
             </div>
 </section>
           <section id="camera-options" data-settings-detail hidden aria-labelledby="camera-info-title">
-            <h3 id="camera-info-title">撮影</h3><label><input id="overlay-enabled" type="checkbox" checked> 板面の枠を表示</label>
+            <h3 id="camera-info-title">撮影</h3><label><input id="photos-enabled" type="checkbox" checked> 保存のたびに写真への保存も案内する</label><label><input id="overlay-enabled" type="checkbox" checked> 板面の枠を表示</label>
             <p id="capture-diagnostics">撮影結果はまだありません。</p>
             <p id="camera-diagnostics">カメラ開始後に表示します。</p>
             <p id="resolution">映像：未取得</p>

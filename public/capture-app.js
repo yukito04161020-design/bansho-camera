@@ -14,6 +14,8 @@ import { initializeCameraUi, showSettingsPage, showToast } from "./camera-ui.js"
 import { prepareReviewSave } from "./review-save.js";
 import { createCropEditor } from "./crop-editor.js";
 
+import { createPhotoShare } from "./photo-share.js";
+
 const session = new TokenSession();
 const folders = createDriveFolders({ session });
 const upload = createDriveUpload({ session, folders });
@@ -43,6 +45,11 @@ let automaticKey;
 const timetableEditor = createTimetableEditor({ save: (entries) => updateTimetable(entries) });
 const crop = createCropEditor({ onChange: render });
 initializeCameraUi();
+const photos = createPhotoShare({ notify: showToast, prompt: showToast });
+$("photos-enabled").checked = photos.enabled();
+$("photos-enabled").addEventListener("change", () => photos.setEnabled($("photos-enabled").checked));
+$("last-image").addEventListener("click", () => { void photos.share(); });
+document.addEventListener("bansho-capture-start", () => { photos.clear(); $("last-image").disabled = true; $("thumbnail-photo").hidden = true; });
 
 function namesFor(className) {
   const cached = settings.lessons.find((lesson) => lesson.className === className);
@@ -315,7 +322,8 @@ $("save-image").addEventListener("click", async () => {
   try {
     const corrected = await prepareReviewSave({ draft: captured, crop, selectDestination: openOptions });
     if (!corrected || document.hidden) return;
-    await saveCapturedImage({ canvas: corrected, destination: captured.destination, enqueue: (item) => queue.enqueue(item) });
+    let savedBlob;
+    await saveCapturedImage({ canvas: corrected, destination: captured.destination, enqueue: async (item) => { const result = await queue.enqueue(item); savedBlob = item.blob; return result; } });
     pending.push({ className: captured.destination.className, sessionFolderName: captured.destination.sessionFolderName });
     const thumb = $("thumbnail");
     thumb.getContext("2d").drawImage(corrected, 0, 0, 64, 64);
@@ -327,7 +335,9 @@ $("save-image").addEventListener("click", async () => {
     $("options-panel").close();
     render();
     returnToCamera();
-    showToast("保存しました");
+    photos.saved(savedBlob);
+    $("thumbnail-photo").hidden = false;
+    if (!photos.enabled()) showToast("保存しました");
   } catch {
     $("save-status").textContent = "端末内に保存できませんでした。画像を残しています。空き容量を確認し、再試行してください。";
   } finally { saving = false; $("save-image").classList.remove("busy"); render(); }

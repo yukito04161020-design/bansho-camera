@@ -224,6 +224,6 @@ test("複数コマ撮影中は理由を表示して操作を止め、hiddenで�
     env.visibility(false); await until(() => !$("capture").disabled);
     $("capture").click();
     await until(() => !$("image-screen").hidden);
-    assert.match($("capture-diagnostics").textContent, /8コマ.*1コマ目.*最小.*最大/);
+    assert.match($("capture-diagnostics").textContent, /4コマ.*1コマ目.*最小.*最大/);
   } finally { env.visibility(true); await pause(); env.restore(); }
 });

@@ -37,7 +37,7 @@ export async function captureSharpestFrame({ video, output, settings, signal,
     check();
     capture(video, output); // 押した瞬間の予備。コマが取れない場合だけ使う。
     work = createCanvas(); small = createCanvas();
-    await delay(settings.delayMs, signal);
+    if (settings.delayMs > 0) await delay(settings.delayMs, signal);
     check();
     const start = now();
     for (let attempt = 0; attempt < settings.maxFrames; attempt++) {

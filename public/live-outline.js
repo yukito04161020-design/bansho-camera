@@ -22,9 +22,12 @@ export function createLiveOutline({ active, detect, draw, clear, schedule = setT
 }
 
 export function bindLiveOutline({ video, screen, overlay, toggle, document = globalThis.document, window = globalThis.window }) {
+  let zooming = false;
+  const pointers = new Set();
+  let manipulating = false;
   const small = document.createElement("canvas"), polygon = overlay.querySelector("polygon");
   const live = createLiveOutline({
-    active: () => !document.hidden && !screen.hidden && !video.paused && video.readyState >= 2 && video.videoWidth > 0,
+    active: () => !zooming && !manipulating && !document.hidden && !screen.hidden && !video.paused && video.readyState >= 2 && video.videoWidth > 0,
     clear: () => polygon.setAttribute("points", ""),
     detect: async (signal) => {
       const scale = Math.min(1, 480 / Math.max(video.videoWidth, video.videoHeight));
@@ -46,6 +49,17 @@ export function bindLiveOutline({ video, screen, overlay, toggle, document = glo
   live.setEnabled(toggle.checked);
   toggle.addEventListener("change", () => { live.setEnabled(toggle.checked); try { window.localStorage.setItem("bansho-camera.outline", toggle.checked ? "on" : "off"); } catch {} });
   for (const event of ["playing", "pause", "emptied"]) video.addEventListener(event, () => live.refresh());
+  screen.addEventListener("pointerdown", event => {
+    if (event.pointerType === "touch") pointers.add(event.pointerId);
+    if (pointers.size >= 2 || event.target.closest?.("#zoom, #zoom-buttons")) {
+      manipulating = true; live.refresh();
+    }
+  });
+  for (const type of ["pointerup", "pointercancel", "lostpointercapture"]) window.addEventListener(type, event => {
+    pointers.delete(event.pointerId);
+    if (manipulating && pointers.size < 2) { manipulating = false; live.refresh(); }
+  });
+  document.addEventListener("bansho-zoom-busy", event => { zooming = event.detail; live.refresh(); });
   document.addEventListener("visibilitychange", () => live.refresh());
   window.addEventListener("pagehide", () => { live.setEnabled(false); });
   window.addEventListener("pageshow", () => { live.setEnabled(toggle.checked); });
