@@ -1,3 +1,4 @@
+html.camera-page-fixed, body.camera-page-fixed { touch-action: none; overscroll-behavior: none; overflow: hidden; }
 /* 既存の画像配置・時間割機能を維持する共通スタイル。 */
 :root { font: -apple-system-body; }
 #destination-status { display: block; border: 0; padding: .25rem; font-weight: 700; min-height: 44px; overflow-wrap: anywhere; }

@@ -87,13 +87,15 @@ export function createPinchZoom({ readZoom, onZoom }) {
       rebase();
       return true;
     },
-    move(id, x, y) {
-      if (!points.has(id) || !Number.isFinite(x) || !Number.isFinite(y)) return;
-      points.set(id, { x, y });
+    move(id, x, y) { this.movePoints([{ id, x, y }]); },
+    movePoints(updates) {
+      for (const { id, x, y } of updates) {
+        if (points.has(id) && Number.isFinite(x) && Number.isFinite(y)) points.set(id, { x, y });
+      }
       if (points.size !== 2) return;
       if (!baseline) { rebase(); return; }
       const value = baseline.zoom * distance() / baseline.length;
-      if (Number.isFinite(value) && value > 0) onZoom(value);
+      if (Number.isFinite(value) && value >= 0) onZoom(value);
     },
     end(id) {
       if (!points.delete(id)) return;

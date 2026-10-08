@@ -1,6 +1,6 @@
 import { config } from "./config.js";
 import { captureSharpestFrame } from "./sharpest-frame.js";
-import { bindCameraStage } from "./camera-stage.js";
+import { bindCameraStage, bindCameraPageGuard } from "./camera-stage.js";
 import { discoverCameras, chooseCamera, readChoices, rememberChoice, compareCameras, setCameraMagnification } from "./auto-camera.js";
 import { captureDisabledReason } from "./capture-save.js";
 import { captureFrame } from "./camera-logic.js";
@@ -428,8 +428,16 @@ cameraSelect?.addEventListener("change", () => {
   void startCamera({ deviceId, allowFallback: false });
 });
 zoomSlider.addEventListener("input", () => { liveZoom?.request(Number(zoomSlider.value)); });
+const stageActive = () => imageScreen.hidden && !cameraScreen.hidden && !document.querySelector("#options-panel")?.open;
+const pageGuard = bindCameraPageGuard(document, stageActive);
+if (typeof MutationObserver !== "undefined") {
+  const observer = new MutationObserver(() => { pageGuard.sync(); if (!stageActive()) pinch.reset(); });
+  for (const node of [cameraScreen, imageScreen, document.querySelector("#options-panel")]) {
+    if (node) observer.observe(node, { attributes: true, attributeFilter: ["hidden", "open"] });
+  }
+}
 const pinch = bindCameraStage(cameraScreen, {
-  active: () => imageScreen.hidden && !cameraScreen.hidden && !document.querySelector("#options-panel")?.open,
+  active: stageActive,
   enabled: () => !zoomSlider.disabled && Boolean(liveZoom),
   readZoom: () => Number(zoomSlider.value), onZoom: (value) => liveZoom?.request(value),
 });
