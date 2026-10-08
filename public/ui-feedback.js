@@ -42,7 +42,7 @@ export function createToast({ nodes, select, schedule = setTimeout, cancel = cle
     if (action) {
       const button = node.ownerDocument.createElement("button");
       button.type = "button"; button.textContent = "写真にも保存"; button.setAttribute("aria-label", "写真にも保存");
-      button.addEventListener("click", action); node.append(button);
+      button.addEventListener("click", () => { actionable = false; action(); }); node.append(button);
     }
     timer = schedule(() => { node.hidden = true; actionable = false; }, 3000);
   };

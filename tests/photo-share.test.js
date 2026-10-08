@@ -45,5 +45,18 @@ test("保存通知には実際に押せる写真にも保存ボタンを付け�
   const node = { ownerDocument: { createElement: () => ({ setAttribute() {}, addEventListener: (_, fn) => { action = fn; } }) }, append(button) { this.button = button; } };
   const show = createToast({ nodes: [node], select: () => node, schedule: () => 1, cancel() {} });
   show("保存しました", () => pressed++);
-  assert.equal(node.button.textContent, "写真にも保存"); action(); assert.equal(pressed, 1);
+  assert.equal(node.button.textContent, "写真にも保存");
+  show("カメラを準備しています"); assert.equal(node.textContent, "保存しました");
+  action(); assert.equal(pressed, 1);
+  show("長押しして写真に追加してください"); assert.equal(node.textContent, "長押しして写真に追加してください");
+});
+
+test("サムネイルと案内設定は共有コントローラに接続され、次の撮影開始で解放する", async () => {
+  const { readFile } = await import("node:fs/promises");
+  const app = await readFile(new URL("../public/capture-app.js", import.meta.url), "utf8");
+  const html = await readFile(new URL("../public/camera.html", import.meta.url), "utf8");
+  assert.match(app, /\$\("last-image"\)\.addEventListener\("click", \(\) => \{ void photos\.share\(\); \}\)/);
+  assert.match(app, /"bansho-capture-start", \(\) => \{ photos\.clear\(\)/);
+  assert.match(html, /id="photos-enabled"[^>]*checked/);
+  assert.match(html, /id="thumbnail-photo" hidden>写真に保存/);
 });

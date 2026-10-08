@@ -1,10 +1,10 @@
 // 送信待ちとは独立して、直前の補正後JPEGだけをメモリに保持する。
 export function createPhotoShare({ navigator = globalThis.navigator, File = globalThis.File,
   URL = globalThis.URL, open = (...args) => globalThis.open(...args), notify, prompt,
-  storage = globalThis.localStorage }) {
+  storage }) {
   let file = null, url = null;
   let enabled = true;
-  try { enabled = storage.getItem("bansho-camera.photos") !== "off"; } catch {}
+  try { storage ??= globalThis.localStorage; enabled = storage.getItem("bansho-camera.photos") !== "off"; } catch {}
   function clear() { file = null; if (url) URL.revokeObjectURL(url); url = null; }
   return {
     enabled: () => enabled,
