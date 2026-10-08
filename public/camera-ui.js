@@ -18,6 +18,7 @@ export function zoomStops(min, max) {
   return values;
 }
 export function initializeCameraUi() {
+  document.addEventListener("bansho-zoom-error", event => showToast(event.detail));
   bindSheetDrag({ grip: $("sheet-grip"), sheet: $("options-panel") });
   document.querySelectorAll("[data-settings-page]").forEach(button => button.addEventListener("click", () => showSettingsPage(button.dataset.settingsPage)));
   $("settings-back").addEventListener("click", () => showSettingsPage(null));

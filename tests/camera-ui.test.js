@@ -68,6 +68,14 @@ test("倍率候補は能力範囲内の2〜5個に収める", () => {
   assert.deepEqual(zoomStops(1, 1), [1]);
 });
 
+test("倍率の状態文は撮影ステージに置かず、設定のカメラ情報にだけ置く", async () => {
+  const html = await readFile(new URL("../public/camera.html", import.meta.url), "utf8");
+  const cameraStage = html.slice(html.indexOf('id="camera-screen"'), html.indexOf('id="image-screen"'));
+  assert.equal(cameraStage.includes('id="zoom-status"'), false);
+  assert.match(html, /<section id="camera-options"[^>]*>[\s\S]*?id="zoom-status"[\s\S]*?<\/section>/);
+  assert.equal((html.match(/id="zoom-status"/g) || []).length, 1);
+});
+
 test("画面確認後の配置は透明28px輪・縮まないアイコン・上端の完了ボタンを使う", async () => {
   const html = await readFile(new URL("../public/camera.html", import.meta.url), "utf8");
   const css = await readFile(new URL("../public/capture.css", import.meta.url), "utf8");

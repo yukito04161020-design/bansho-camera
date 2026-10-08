@@ -6,7 +6,8 @@ import { captureDisabledReason } from "./capture-save.js";
 import { captureFrame } from "./camera-logic.js";
 import { applyTrackZoom, cameraOptions, normalizeZoom, openSelectedCamera, readCameraPreference, writeCameraPreference, zoomRange } from "./camera-options.js";
 import { initializeUpdates } from "./app-update.js";
-import { createLiveZoom } from "./camera-zoom.js";
+import { createLiveZoom, waitForZoom } from "./camera-zoom.js";
+import { createStableReason, createZoomFailureNotice } from "./ui-feedback.js";
 
 const video = document.querySelector("#camera");
 const canvas = document.querySelector("#image");
@@ -26,6 +27,14 @@ const cameraName = document.querySelector("#camera-name");
 const devicesStatus = document.querySelector("#devices-status");
 const zoomSlider = document.querySelector("#zoom");
 const zoomStatus = document.querySelector("#zoom-status");
+const captureReason = document.querySelector("#capture-reason");
+if (captureReason) captureReason.hidden = true;
+const showCaptureReason = createStableReason({ show: reason => {
+  if (captureReason) { captureReason.textContent = reason; captureReason.hidden = !reason; }
+} });
+const notifyZoomFailure = createZoomFailureNotice({ notify: message => {
+  document.dispatchEvent(new CustomEvent("bansho-zoom-error", { detail: message }));
+} });
 const preferenceStatus = document.querySelector("#preference-status");
 const automaticCamera = !cameraSelect;
 let automaticCandidates = null;
@@ -42,6 +51,7 @@ let starting = false;
 let zoomApplying = false;
 let liveZoom = null;
 let captureController = null;
+let captureWaitController = null;
 let captureBlocked = false;
 let operationActive = false;
 export function setCaptureBlocked(value) { captureBlocked = value; updateVideoState(); }
@@ -70,11 +80,11 @@ function rememberCamera() {
 
 function showZoom(result, settled = true) {
   currentZoom = result.actual ?? result.requested;
-  if (settled) zoomSlider.value = normalizeZoom(automaticCamera ? requestedMagnification : currentZoom, range);
+  if (!settled) return;
+  zoomSlider.value = normalizeZoom(automaticCamera ? requestedMagnification : currentZoom, range);
   zoomStatus.textContent = result.actual === null
     ? `倍率：取得できません（指定 ${result.requested}×）`
     : `倍率：${result.actual}×${Math.abs(result.actual - result.requested) > range.step / 2 ? `（指定 ${result.requested}×は反映されませんでした）` : ""}`;
-  if (!settled) zoomStatus.textContent += `（変更中：${zoomSlider.value}×）`;
 }
 
 async function refreshCameraList(track, current) {
@@ -129,7 +139,10 @@ async function configureZoom(track, current) {
       },
       onRequested: (value) => { requestedMagnification = value; zoomSlider.value = value; },
       onApplied: (result, { settled }) => { showZoom(result, settled); if (settled) rememberCamera(); },
-      onError: () => { zoomStatus.textContent = "倍率の変更に失敗しました。再試行してください。"; },
+      onError: ({ settled }) => {
+        notifyZoomFailure();
+        if (settled) zoomSlider.value = liveZoom.value();
+      },
       onBusy: (value) => { zoomApplying = value; document.dispatchEvent(new CustomEvent("bansho-zoom-busy", { detail: value })); updateVideoState(); },
     });
     return;
@@ -168,7 +181,6 @@ async function configureZoom(track, current) {
     applyZoom: (value) => applyTrackZoom(track, value, range),
     onRequested: (value) => {
       zoomSlider.value = value;
-      zoomStatus.textContent = `倍率：${currentZoom}×（変更中：${value}×）`;
     },
     onApplied: (result, { settled }) => {
       showZoom(result, settled);
@@ -176,10 +188,10 @@ async function configureZoom(track, current) {
       resolution.textContent = `映像：${video.videoWidth} × ${video.videoHeight} px`;
     },
     onError: ({ settled }) => {
+      notifyZoomFailure();
       if (!settled) return;
       const actual = track.getSettings?.().zoom;
       showZoom({ requested: normalizeZoom(currentZoom, range), actual: Number.isFinite(actual) && actual > 0 ? actual : null });
-      zoomStatus.textContent += "（ズーム変更に失敗しました）";
     },
     onBusy: (value) => { zoomApplying = value; document.dispatchEvent(new CustomEvent("bansho-zoom-busy", { detail: value })); updateVideoState(); },
   });
@@ -192,8 +204,7 @@ function updateVideoState() {
   const reason = captureDisabledReason({ starting, hidden: document.hidden, ready, zoomApplying, blocked: captureController ? "撮影中…" : captureBlocked });
   captureButton.disabled = Boolean(reason);
   captureButton.classList.toggle("busy", Boolean(captureController));
-  const explanation = document.querySelector("#capture-reason");
-  if (explanation) { explanation.textContent = reason; explanation.hidden = !reason || (!stream && !starting && !captureController); }
+  showCaptureReason(!stream && !starting && !captureController ? "" : reason);
   zoomSlider.disabled = Boolean(captureController) || !ready || !range || range.max <= range.min;
   video.classList.toggle("zoom-enabled", !zoomSlider.disabled);
   if (cameraSelect) cameraSelect.disabled = starting || cameraSelect.options.length <= 1;
@@ -228,6 +239,7 @@ async function keepScreenOn() {
 
 function stopCamera() {
   captureController?.abort();
+  captureWaitController?.abort();
   generation += 1;
   cancelComparison?.();
   comparisonStream?.getTracks().forEach((track) => track.stop());
@@ -450,17 +462,23 @@ for (const event of ["loadeddata", "playing", "resize", "pause", "waiting"]) {
 }
 
 captureButton.addEventListener("click", async () => {
-  if (!imageScreen.hidden || cameraScreen.hidden || captureButton.disabled || captureController || starting || document.hidden) return;
-  cameraScreen.classList.remove("flash");
-  void cameraScreen.offsetWidth;
-  cameraScreen.classList.add("flash");
+  if (!imageScreen.hidden || cameraScreen.hidden || captureButton.disabled || captureController || captureWaitController || starting || document.hidden) return;
   const controller = new AbortController();
-  captureController = controller;
+  captureWaitController = controller;
   const current = generation;
-  status.textContent = "撮影中…";
-  updateVideoState();
+  const capturedAt = Date.now();
   try {
-    const capturedAt = Date.now();
+    if (zoomApplying) await waitForZoom({ isBusy: () => zoomApplying, signal: controller.signal });
+    // 待機中の停止・裏への移動・別画面への移動では撮影を始めない。
+    if (controller.signal.aborted || current !== generation || document.hidden || starting ||
+        !imageScreen.hidden || cameraScreen.hidden || captureButton.disabled) return;
+    captureWaitController = null;
+    captureController = controller;
+    cameraScreen.classList.remove("flash");
+    void cameraScreen.offsetWidth;
+    cameraScreen.classList.add("flash");
+    status.textContent = "撮影中…";
+    updateVideoState();
     document.dispatchEvent(new Event("bansho-capture-start"));
     const result = await captureSharpestFrame({ video, output: canvas, settings: config.sharpestFrame,
       signal: controller.signal, active: () => {
@@ -485,6 +503,7 @@ captureButton.addEventListener("click", async () => {
       status.textContent = "撮影を中止しました。カメラの再開後に撮り直してください。";
     } else status.textContent = "画像を切り出せませんでした。映像が動いていることを確認して再試行してください。";
   } finally {
+    if (captureWaitController === controller) captureWaitController = null;
     if (captureController === controller) captureController = null;
     updateVideoState();
   }
