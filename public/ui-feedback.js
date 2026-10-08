@@ -30,14 +30,21 @@ export function toastMessage(text) {
 }
 
 export function createToast({ nodes, select, schedule = setTimeout, cancel = clearTimeout }) {
-  let timer;
-  return text => {
+  let timer, actionable = false;
+  return (text, action) => {
+    if (actionable && !action) return;
     const message = toastMessage(text);
     if (!message) return;
+    actionable = Boolean(action);
     cancel(timer);
     nodes.forEach(node => { node.hidden = true; });
     const node = select(); node.textContent = message; node.hidden = false;
-    timer = schedule(() => { node.hidden = true; }, 3000);
+    if (action) {
+      const button = node.ownerDocument.createElement("button");
+      button.type = "button"; button.textContent = "写真にも保存"; button.setAttribute("aria-label", "写真にも保存");
+      button.addEventListener("click", () => { actionable = false; action(); }); node.append(button);
+    }
+    timer = schedule(() => { node.hidden = true; actionable = false; }, 3000);
   };
 }
 

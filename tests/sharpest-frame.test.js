@@ -53,15 +53,15 @@ test("生成した鮮明・ぼかし画像のコマ列で鮮明な2コマ目を�
   assert.equal(f.peak(), 2);
   assert.equal(new Set(f.captures).size, 2);
   assert.equal(f.canvases[1].width, 0); assert.equal(f.canvases[2].width, 0);
-  assert.equal(f.waits[0], 150);
+  assert.equal(f.waits[0], 200 / 3);
 });
-test("最大8コマ・約0.5秒の時間枠を守り、同点なら最初を採用", async () => {
-  const f = fixture(Array(8).fill(image()));
+test("最大4コマ・200ミリ秒の時間枠を守り、同点なら最初を採用", async () => {
+  const f = fixture(Array(4).fill(image()));
   const result = await captureSharpestFrame(f.options);
-  assert.equal(result.count, 8); assert.equal(result.selected, 1);
+  assert.equal(result.count, 4); assert.equal(result.selected, 1);
   assert.equal(f.peak(), 2);
   assert.equal(new Set(f.captures).size, 2);
-  assert.ok(f.waits.reduce((a, b) => a + b, 0) < 650);
+  assert.ok(f.waits.reduce((a, b) => a + b, 0) < 200);
   const slow = fixture();
   slow.options.delay = async () => {};
   let clock = 0;
@@ -104,4 +104,14 @@ test("採用画像のコピーに失敗した場合は空画像を確認へ渡�
   f.options.output.getContext = () => ({ drawImage() { throw new Error("コピー失敗"); } });
   await assert.rejects(captureSharpestFrame(f.options), /コピー失敗/);
   assert.ok(f.canvases.every(c => c.width === 0 && c.height === 0));
+});
+
+test("待ち0ミリ秒・200ミリ秒・最大4コマで、最初の候補はタップ直後に取得する", async () => {
+  assert.deepEqual(config.sharpestFrame, { delayMs: 0, durationMs: 200, maxFrames: 4, scoreLongEdge: 800 });
+  const f = fixture(Array(4).fill(image()));
+  const pending = captureSharpestFrame(f.options);
+  // 最初のawait（次コマの待機）より前に予備と最初の候補を取得済み。
+  assert.equal(f.captures.length, 2);
+  assert.equal((await pending).count, 4);
+  assert.deepEqual(f.waits, [50, 50, 50]);
 });

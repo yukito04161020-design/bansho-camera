@@ -2,7 +2,7 @@
 // APIキー、クライアントシークレット、トークン、パスワードは置かないでください。
 // 後続のログイン実装から import { config } from "./config.js" で参照します。
 export const config = Object.freeze({
-  sharpestFrame: Object.freeze({ delayMs: 150, durationMs: 500, maxFrames: 8, scoreLongEdge: 800 }),
+  sharpestFrame: Object.freeze({ delayMs: 0, durationMs: 200, maxFrames: 4, scoreLongEdge: 800 }),
   periodPresets: Object.freeze([
     ["1限", "08:50", "10:20"],
     ["2限", "10:30", "12:00"],

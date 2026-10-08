@@ -80,3 +80,20 @@ test("画面確認後の配置は透明28px輪・縮まないアイコン・上�
   assert.match(html, /id="sheet-grip"/);
   assert.match(css, /#camera-screen \.top\s*\{ left: auto; right: 0;/);
 });
+
+test("倍率は小数1桁で、連続更新でもボタンの要素を保持し1フレームに1回だけ描画する", async () => {
+  const { formatZoom, frameUpdater, createZoomButtons } = await import("../public/camera-ui.js");
+  assert.equal(formatZoom(6.01), "6.0×"); assert.equal(formatZoom(1), "1.0×");
+  const zoom = { min: 1, max: 10, value: 1, disabled: false };
+  let replacements = 0, task, frames = 0;
+  const group = { children: [], replaceChildren(...nodes) { replacements++; this.children = nodes; } };
+  const document = { createElement: () => ({ dataset: {}, setAttribute(name, value) { this[name] = value; }, addEventListener() {} }) };
+  const render = createZoomButtons({ zoom, group, document, select() {} });
+  render(); const original = [...group.children];
+  const update = frameUpdater(render, fn => { task = fn; frames++; });
+  for (const value of [2, 3, 6.01, 5]) { zoom.value = value; update(); }
+  assert.equal(frames, 1); task(); assert.equal(replacements, 1);
+  group.children.forEach((node, i) => assert.equal(node, original[i]));
+  assert.equal(group.children.at(-1)["aria-pressed"], "true");
+  update(); assert.equal(frames, 2);
+});

@@ -130,7 +130,7 @@ async function configureZoom(track, current) {
       onRequested: (value) => { requestedMagnification = value; zoomSlider.value = value; },
       onApplied: (result, { settled }) => { showZoom(result, settled); if (settled) rememberCamera(); },
       onError: () => { zoomStatus.textContent = "倍率の変更に失敗しました。再試行してください。"; },
-      onBusy: (value) => { zoomApplying = value; updateVideoState(); },
+      onBusy: (value) => { zoomApplying = value; document.dispatchEvent(new CustomEvent("bansho-zoom-busy", { detail: value })); updateVideoState(); },
     });
     return;
   }
@@ -181,7 +181,7 @@ async function configureZoom(track, current) {
       showZoom({ requested: normalizeZoom(currentZoom, range), actual: Number.isFinite(actual) && actual > 0 ? actual : null });
       zoomStatus.textContent += "（ズーム変更に失敗しました）";
     },
-    onBusy: (value) => { zoomApplying = value; updateVideoState(); },
+    onBusy: (value) => { zoomApplying = value; document.dispatchEvent(new CustomEvent("bansho-zoom-busy", { detail: value })); updateVideoState(); },
   });
 }
 
@@ -453,6 +453,7 @@ captureButton.addEventListener("click", async () => {
   updateVideoState();
   try {
     const capturedAt = Date.now();
+    document.dispatchEvent(new Event("bansho-capture-start"));
     const result = await captureSharpestFrame({ video, output: canvas, settings: config.sharpestFrame,
       signal: controller.signal, active: () => {
         const track = stream?.getVideoTracks()[0];
