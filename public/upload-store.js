@@ -8,19 +8,70 @@ export class ImageUnreadableError extends Error {
   constructor() { super("端末内の画像を読み込めませんでした。"); this.name = "ImageUnreadableError"; }
 }
 
+// iPhoneのSafariは裏から戻ったとき、DBとの接続が切れて操作が失敗し続けることがある。
+// 接続の問題による失敗だけに印を付け、開き直して1回だけやり直す。
+function connectionLost() {
+  const error = new QueueStorageError();
+  error.connectionLost = true;
+  return error;
+}
+// 明示的な中断（error=null）や容量不足は開き直しても直らないため、やり直さない。
+const lostNames = new Set(["UnknownError", "InvalidStateError", "AbortError", "TimeoutError"]);
+
 // リクエスト成功だけで保存完了とせず、トランザクション完了を待つ。
-function transaction(db, mode, action) {
+// 完了も中断も届かないときは制限時間で失敗にし、接続を開き直す対象にする。
+function transaction(db, mode, action, { setTimer, clearTimer, timeout }) {
   return new Promise((resolve, reject) => {
-    try {
-      const tx = db.transaction(["uploads", "state"], mode);
-      let result;
-      tx.oncomplete = () => resolve(result);
-      tx.onabort = () => reject(new QueueStorageError());
-      tx.onerror = () => {}; // abortで固定文言を返し、外部のエラー内容を保存しない。
-      try { action(tx.objectStore("uploads"), tx.objectStore("state"), (value) => { result = value; }); }
-      catch { tx.abort(); }
-    } catch { reject(new QueueStorageError()); }
+    let settled = false;
+    let timer = null;
+    const finish = (settle) => { if (settled) return; settled = true; clearTimer(timer); settle(); };
+    let tx;
+    try { tx = db.transaction(["uploads", "state"], mode); }
+    catch { reject(connectionLost()); return; }
+    let result;
+    tx.oncomplete = () => finish(() => resolve(result));
+    tx.onabort = () => finish(() => reject(lostNames.has(tx.error?.name) ? connectionLost() : new QueueStorageError()));
+    tx.onerror = () => {}; // abortで固定文言を返し、外部のエラー内容を保存しない。
+    timer = setTimer(() => finish(() => {
+      try { tx.abort(); } catch { /* 既に終わっている場合も失敗として扱う。 */ }
+      reject(connectionLost());
+    }), timeout);
+    try { action(tx.objectStore("uploads"), tx.objectStore("state"), (value) => { result = value; }); }
+    catch { try { tx.abort(); } catch { /* 中断できなくても制限時間で失敗にする。 */ } }
   });
+}
+
+function connect(indexedDB, databaseName, { setTimer, clearTimer, timeout }) {
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    let timer = null;
+    const fail = () => { if (settled) return; settled = true; clearTimer(timer); reject(new QueueStorageError()); };
+    try {
+      const request = indexedDB.open(databaseName, 1);
+      request.onerror = fail;
+      request.onblocked = fail;
+      request.onupgradeneeded = () => {
+        const uploads = request.result.createObjectStore("uploads", { keyPath: "id", autoIncrement: true });
+        uploads.createIndex("captureOrder", ["capturedAt", "id"]);
+        request.result.createObjectStore("state");
+      };
+      request.onsuccess = () => {
+        if (settled) { request.result.close(); return; }
+        settled = true;
+        clearTimer(timer);
+        resolve(request.result);
+      };
+      timer = setTimer(fail, timeout);
+    } catch { fail(); }
+  });
+}
+
+// 画像の読み出しが返らないときも、送信待ちの処理を止めない。
+function within(promise, { setTimer, clearTimer, timeout }) {
+  let timer = null;
+  return Promise.race([promise, new Promise((resolve, reject) => {
+    timer = setTimer(() => reject(new Error("timeout")), timeout);
+  })]).finally(() => clearTimer(timer));
 }
 
 function imageRecord(input) {
@@ -41,9 +92,9 @@ function imageRecord(input) {
 
 // iPhoneのSafariでは、IndexedDBに入れたBlobが開き直した後に読めなくなることがある。
 // そのため画像はバイト列（ArrayBuffer）で保存し、送信時にBlobへ戻す。
-async function imageBytes(blob) {
+async function imageBytes(blob, limits) {
   let bytes;
-  try { bytes = await blob.arrayBuffer(); } catch { throw new ImageUnreadableError(); }
+  try { bytes = await within(blob.arrayBuffer(), limits); } catch { throw new ImageUnreadableError(); }
   if (!(bytes instanceof ArrayBuffer) || !bytes.byteLength || bytes.byteLength !== blob.size) throw new ImageUnreadableError();
   return bytes;
 }
@@ -51,39 +102,54 @@ async function imageBytes(blob) {
 const unreadableKey = "unreadableIds";
 const idList = (value) => Array.isArray(value) ? value.filter(Number.isSafeInteger) : [];
 
-export async function openUploadStore({ indexedDB = globalThis.indexedDB, databaseName = "bansho-camera-uploads" } = {}) {
-  const db = await new Promise((resolve, reject) => {
-    let rejected = false;
-    try {
-      const request = indexedDB.open(databaseName, 1);
-      const fail = () => { rejected = true; reject(new QueueStorageError()); };
-      request.onerror = fail;
-      request.onblocked = fail;
-      request.onupgradeneeded = () => {
-        const uploads = request.result.createObjectStore("uploads", { keyPath: "id", autoIncrement: true });
-        uploads.createIndex("captureOrder", ["capturedAt", "id"]);
-        request.result.createObjectStore("state");
-      };
-      request.onsuccess = () => {
-        if (rejected) { request.result.close(); return; }
-        request.result.onversionchange = () => request.result.close();
-        resolve(request.result);
-      };
-    } catch { reject(new QueueStorageError()); }
-  });
+export async function openUploadStore({ indexedDB = globalThis.indexedDB, databaseName = "bansho-camera-uploads",
+  setTimer = globalThis.setTimeout, clearTimer = globalThis.clearTimeout, timeout = 30000 } = {}) {
+  const limits = { setTimer, clearTimer, timeout };
+  let db = null;
+  let reopening = null;
+  let closed = false;
+  function watch(connection) {
+    connection.onversionchange = () => { connection.close(); if (db === connection) db = null; };
+    // 接続が切れたことをブラウザが知らせた場合も、次の操作で開き直す。
+    connection.onclose = () => { if (db === connection) db = null; };
+    db = connection;
+    return connection;
+  }
+  function current() {
+    if (db) return Promise.resolve(db);
+    reopening ??= connect(indexedDB, databaseName, limits).then((connection) => {
+      reopening = null;
+      if (closed) { connection.close(); throw new QueueStorageError(); }
+      return watch(connection);
+    }, (error) => { reopening = null; throw error; });
+    return reopening;
+  }
+  async function run(mode, action) {
+    for (let attempt = 0; ; attempt += 1) {
+      if (closed) throw new QueueStorageError();
+      const connection = await current();
+      try { return await transaction(connection, mode, action, limits); }
+      catch (error) {
+        if (!error.connectionLost || attempt > 0) throw new QueueStorageError();
+        if (db === connection) db = null;
+        try { connection.close(); } catch { /* 切れた接続は閉じられなくても開き直す。 */ }
+      }
+    }
+  }
+  await current();
   return {
     databaseName,
     async add(input) {
       const { blob, ...fields } = imageRecord(input);
       // 読み出しはトランザクションの外で済ませる。待機中にトランザクションが閉じるのを防ぐ。
-      const record = { ...fields, bytes: await imageBytes(blob), type: blob.type };
-      return transaction(db, "readwrite", (uploads, state, done) => {
+      const record = { ...fields, bytes: await imageBytes(blob, limits), type: blob.type };
+      return run("readwrite", (uploads, state, done) => {
         uploads.add(record).onsuccess = (event) => done(event.target.result);
       });
     },
     // 送信・写真への保存に使うBlobを返す。読めないときはImageUnreadableErrorで、記録は消さない。
     async readImage(id) {
-      const record = await transaction(db, "readonly", (uploads, state, done) => {
+      const record = await run("readonly", (uploads, state, done) => {
         uploads.get(id).onsuccess = (event) => done(event.target.result || null);
       });
       if (!record) return null;
@@ -91,23 +157,23 @@ export async function openUploadStore({ indexedDB = globalThis.indexedDB, databa
         return new Blob([record.bytes], { type: record.type || "image/jpeg" });
       }
       if (!(record.blob instanceof Blob)) throw new ImageUnreadableError();
-      const bytes = await imageBytes(record.blob);
-      // 以前の版で保存した画像は、読めたときにバイト列も書き足す。元のBlobは送信完了まで残す。
+      const bytes = await imageBytes(record.blob, limits);
+      // 以前の版で保存した画像は、読めたときに同じ内容のバイト列へ置き換える。
+      // Blobを残すと、以後の書き込みのたびにBlobを保存し直すことになり、iPhoneでは失敗し得る。
       try {
-        await transaction(db, "readwrite", (uploads) => {
+        await run("readwrite", (uploads) => {
           uploads.get(id).onsuccess = (event) => {
             const current = event.target.result;
             if (!current || current.bytes instanceof ArrayBuffer) return;
-            current.bytes = bytes;
-            current.type = record.blob.type;
-            uploads.put(current);
+            delete current.blob;
+            uploads.put({ ...current, bytes, type: record.blob.type || "image/jpeg" });
           };
         });
-      } catch { /* 書き足せなくても今回の送信には読めたデータを使う。 */ }
+      } catch { /* 置き換えられなくても今回の送信には読めたデータを使う。 */ }
       return new Blob([bytes], { type: record.blob.type });
     },
     // 写真への保存用。画像本体は含めず、読み出しはreadImageで1件ずつ行う。
-    images: () => transaction(db, "readonly", (uploads, state, done) => {
+    images: () => run("readonly", (uploads, state, done) => {
       const images = [];
       done(images);
       uploads.index("captureOrder").openCursor().onsuccess = (event) => {
@@ -117,23 +183,16 @@ export async function openUploadStore({ indexedDB = globalThis.indexedDB, databa
         cursor.continue();
       };
     }),
-    // 読めなかった画像も、利用者の再開操作でもう一度読み出しを試す。
-    retryUnreadable: () => transaction(db, "readwrite", (uploads, state) => {
-      state.get(unreadableKey).onsuccess = (event) => {
-        for (const id of idList(event.target.result)) {
-          uploads.get(id).onsuccess = (found) => {
-            const record = found.target.result;
-            if (record) uploads.put({ ...record, lastFailure: null, nextRetryAt: 0 });
-          };
-        }
-        state.delete(unreadableKey);
-      };
-    }),
-    count: () => transaction(db, "readonly", (uploads, state, done) => {
+    // 読めなかった画像も、利用者の再開操作でもう一度読み出しを試す。画像のレコードは書き換えない。
+    retryUnreadable: () => run("readwrite", (uploads, state) => { state.delete(unreadableKey); }),
+    count: () => run("readonly", (uploads, state, done) => {
       uploads.count().onsuccess = (event) => done(event.target.result);
     }),
-    snapshot: () => transaction(db, "readonly", (uploads, state, done) => {
-      const snapshot = { pendingCount: 0, unreadableCount: 0, head: null, authenticationRequired: false };
+    // head：表示用の先頭（読めない画像を除く）。next：今送れる最初の画像。
+    // waitAllの理由で失敗した画像があれば、その再送時刻まで後の画像も送らない。
+    // それ以外の理由の失敗は、その画像だけを再送時刻まで後回しにする。
+    snapshot: ({ now = Date.now(), waitAll = [] } = {}) => run("readonly", (uploads, state, done) => {
+      const snapshot = { pendingCount: 0, unreadableCount: 0, head: null, next: null, wakeAt: null, authenticationRequired: false };
       done(snapshot);
       uploads.count().onsuccess = (event) => { snapshot.pendingCount = event.target.result; };
       // 読めない画像は送信の先頭にせず、後の画像の送信を止めない。
@@ -143,13 +202,17 @@ export async function openUploadStore({ indexedDB = globalThis.indexedDB, databa
         uploads.index("captureOrder").openCursor().onsuccess = (found) => {
           const cursor = found.target.result;
           if (!cursor) return;
-          if (skipped.has(cursor.value.id)) { cursor.continue(); return; }
-          snapshot.head = cursor.value;
+          const record = cursor.value;
+          if (skipped.has(record.id)) { cursor.continue(); return; }
+          snapshot.head ??= record;
+          if (!(record.nextRetryAt > now)) { snapshot.next = record; return; }
+          snapshot.wakeAt = snapshot.wakeAt === null ? record.nextRetryAt : Math.min(snapshot.wakeAt, record.nextRetryAt);
+          if (!waitAll.includes(record.lastFailure)) cursor.continue();
         };
       };
       state.get("authenticationRequired").onsuccess = (event) => { snapshot.authenticationRequired = event.target.result === true; };
     }),
-    beginAttempt: (id) => transaction(db, "readwrite", (uploads, state, done) => {
+    beginAttempt: (id) => run("readwrite", (uploads, state, done) => {
       uploads.get(id).onsuccess = (event) => {
         const record = event.target.result;
         if (!record) { done(null); return; }
@@ -160,7 +223,7 @@ export async function openUploadStore({ indexedDB = globalThis.indexedDB, databa
     }),
     setDriveFileId: (id, fileId) => {
       if (typeof fileId !== "string" || !/^[A-Za-z0-9_-]+$/.test(fileId)) throw new TypeError("画像IDが不正です。");
-      return transaction(db, "readwrite", (uploads, state, done) => {
+      return run("readwrite", (uploads, state, done) => {
         uploads.get(id).onsuccess = (event) => {
           const record = event.target.result;
           if (!record || (record.driveFileId && record.driveFileId !== fileId)) {
@@ -173,16 +236,16 @@ export async function openUploadStore({ indexedDB = globalThis.indexedDB, databa
         };
       });
     },
-    readCaptureSettings: () => transaction(db, "readonly", (uploads, state, done) => {
+    readCaptureSettings: () => run("readonly", (uploads, state, done) => {
       state.get("captureSettings").onsuccess = (event) => {
         try { done(captureSettings(event.target.result)); } catch { done(captureSettings()); }
       };
     }),
     writeCaptureSettings: (input) => {
       const value = captureSettings(input);
-      return transaction(db, "readwrite", (uploads, state) => { state.put(value, "captureSettings"); });
+      return run("readwrite", (uploads, state) => { state.put(value, "captureSettings"); });
     },
-    readManualLesson: () => transaction(db, "readonly", (uploads, state, done) => {
+    readManualLesson: () => run("readonly", (uploads, state, done) => {
       state.get("manualLesson").onsuccess = (event) => {
         try { done(manualLessonRecord(event.target.result)); }
         catch { event.target.transaction.abort(); }
@@ -190,9 +253,9 @@ export async function openUploadStore({ indexedDB = globalThis.indexedDB, databa
     }),
     writeManualLesson: (input) => {
       const value = manualLessonRecord(input);
-      return transaction(db, "readwrite", (uploads, state) => { state.put(value, "manualLesson"); });
+      return run("readwrite", (uploads, state) => { state.put(value, "manualLesson"); });
     },
-    readTimetable: () => transaction(db, "readonly", (uploads, state, done) => {
+    readTimetable: () => run("readonly", (uploads, state, done) => {
       state.get("timetable").onsuccess = (event) => {
         try { done(event.target.result ? timetableRecord(event.target.result) : null); }
         catch { event.target.transaction.abort(); }
@@ -200,9 +263,9 @@ export async function openUploadStore({ indexedDB = globalThis.indexedDB, databa
     }),
     writeTimetable: (input) => {
       const value = timetableRecord(input);
-      return transaction(db, "readwrite", (uploads, state) => { state.put(value, "timetable"); });
+      return run("readwrite", (uploads, state) => { state.put(value, "timetable"); });
     },
-    pendingDestinations: () => transaction(db, "readonly", (uploads, state, done) => {
+    pendingDestinations: () => run("readonly", (uploads, state, done) => {
       const destinations = [];
       done(destinations);
       uploads.openCursor().onsuccess = (event) => {
@@ -212,32 +275,41 @@ export async function openUploadStore({ indexedDB = globalThis.indexedDB, databa
         cursor.continue();
       };
     }),
-    succeed: (id) => transaction(db, "readwrite", (uploads, state) => {
+    succeed: (id) => run("readwrite", (uploads, state) => {
       uploads.delete(id);
       state.get(unreadableKey).onsuccess = (event) => {
         const ids = idList(event.target.result);
         if (ids.includes(id)) state.put(ids.filter((item) => item !== id), unreadableKey);
       };
     }),
-    fail: (id, reason, nextRetryAt) => transaction(db, "readwrite", (uploads, state) => {
+    // detailは失敗した段階・HTTP番号・既知の理由コードだけ（呼び出し元で検証済み）。
+    fail: (id, reason, nextRetryAt, detail = null) => run("readwrite", (uploads, state) => {
+      // 読めない画像は画像のレコードを書き換えず、IDだけを記録する。
+      // 以前の版のBlobを含むレコードは、書き戻すとiPhoneで失敗し、送信待ち全体を止め得る。
+      if (reason === "unreadable") {
+        state.get(unreadableKey).onsuccess = (found) => {
+          const ids = idList(found.target.result);
+          if (!ids.includes(id)) state.put([...ids, id], unreadableKey);
+        };
+        return;
+      }
       uploads.get(id).onsuccess = (event) => {
         const record = event.target.result;
         if (!record) return;
         record.lastFailure = reason;
+        record.lastFailureDetail = detail;
         record.nextRetryAt = nextRetryAt;
         uploads.put(record);
         if (reason === "authentication") state.put(true, "authenticationRequired");
-        if (reason === "unreadable") {
-          state.get(unreadableKey).onsuccess = (found) => {
-            const ids = idList(found.target.result);
-            if (!ids.includes(id)) state.put([...ids, id], unreadableKey);
-          };
-        }
       };
     }),
-    resumeAuthentication: () => transaction(db, "readwrite", (uploads, state) => {
+    resumeAuthentication: () => run("readwrite", (uploads, state) => {
       state.delete("authenticationRequired");
     }),
-    close: () => db.close(),
+    close: () => {
+      closed = true;
+      db?.close();
+      db = null;
+    },
   };
 }

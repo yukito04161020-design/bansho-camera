@@ -2,12 +2,28 @@ import { registerPendingUploadCounter } from "./app-update.js";
 import { openUploadStore, ImageUnreadableError } from "./upload-store.js";
 
 // 外部エラー本文には認証情報が含まれ得るため、既知の分類だけを記録する。
-const reasons = new Set(["network", "server", "permission", "duplicate-folder", "folder", "timeout", "unreadable", "authentication", "upload"]);
+const reasons = new Set(["network", "server", "permission", "duplicate-folder", "folder", "timeout", "unreadable",
+  "authentication", "upload", "quota"]);
+// 通信断・Driveの混雑・容量不足・認証切れは後の画像も同じく失敗するため、送信待ち全体を待たせる。
+// それ以外（権限・保存先・送信結果の不一致・制限時間・読めない画像）は、その画像だけを後回しにする。
+export const waitingReasons = Object.freeze(["network", "server", "quota", "authentication"]);
+const stages = new Set(["read", "id", "folder", "check", "start", "send", "verify"]);
+
+// 実機で原因を切り分けられるよう、失敗した段階・HTTP番号・Driveの既知の理由コードだけを残す。
+export function failureDetail(input) {
+  if (!input || !stages.has(input.stage)) return null;
+  const detail = { stage: input.stage };
+  if (Number.isInteger(input.status) && input.status >= 100 && input.status <= 599) detail.status = input.status;
+  if (typeof input.code === "string" && /^[A-Za-z]{1,40}$/.test(input.code)) detail.code = input.code;
+  return detail;
+}
+
 export class UploadFailure extends Error {
-  constructor(reason) {
+  constructor(reason, detail) {
     super("送信が完了しませんでした。");
     this.name = "UploadFailure";
     this.reason = reasons.has(reason) ? reason : "upload";
+    this.detail = failureDetail(detail);
   }
 }
 
@@ -65,12 +81,13 @@ export async function createUploadQueue({
     timer = setTimer(() => { timer = null; void kick(); }, Math.max(1, Math.min(2147483647, delay)));
   }
   async function refresh() {
-    const snapshot = await store.snapshot();
+    const snapshot = await store.snapshot({ now: now(), waitAll: waitingReasons });
     publish({
       pendingCount: snapshot.pendingCount,
       unreadableCount: snapshot.unreadableCount || 0,
       status: snapshot.authenticationRequired ? "authentication-required" : "waiting",
       reason: snapshot.authenticationRequired ? "authentication" : snapshot.head?.lastFailure || null,
+      detail: snapshot.authenticationRequired ? null : failureDetail(snapshot.head?.lastFailureDetail),
       nextRetryAt: snapshot.head?.nextRetryAt || null,
     });
     return snapshot;
@@ -79,28 +96,34 @@ export async function createUploadQueue({
   async function drain() {
     while (!disposed) {
       const snapshot = await refresh();
-      if (!eligible() || snapshot.authenticationRequired || !snapshot.head) return;
-      const delay = snapshot.head.nextRetryAt - now();
-      if (delay > 0) { schedule(delay); return; }
-      const item = await store.beginAttempt(snapshot.head.id);
-      // DB処理を待つ間に裏へ移った場合も、新たな送信は開始しない。
-      if (!item || !eligible()) return;
+      if (!eligible() || snapshot.authenticationRequired) return;
+      const next = snapshot.next;
+      if (!next) {
+        // 今送れる画像がなければ、最も早い再送時刻に予約する。
+        if (snapshot.wakeAt !== null) schedule(snapshot.wakeAt - now());
+        return;
+      }
       let blob = null;
-      try { blob = await store.readImage(item.id); }
+      try { blob = await store.readImage(next.id); }
       catch (error) { if (!(error instanceof ImageUnreadableError)) throw error; /* 読めない画像も消さずに残す。 */ }
       if (!(blob instanceof Blob)) {
         // 読めない画像は送信の対象から外して記録を残し、後の画像の送信を続ける。
-        await store.fail(item.id, "unreadable", 0);
+        await store.fail(next.id, "unreadable", 0);
         continue;
       }
+      // DB処理を待つ間に裏へ移った場合も、新たな送信は開始しない。
       if (!eligible()) return;
-      publish({ status: "sending", reason: null, nextRetryAt: null });
+      const item = await store.beginAttempt(next.id);
+      if (!item || !eligible()) return;
+      publish({ status: "sending", reason: null, detail: null, nextRetryAt: null });
       let reason = null;
+      let detail = null;
+      let stage = null;
       // 応答が返らない通信でも送信中のまま止まらないよう、制限時間で中断して再送に回す。
       const controller = new AbortController();
       let deadline = null;
       const expired = new Promise((resolve, reject) => {
-        deadline = setTimer(() => { controller.abort(); reject(new UploadFailure("timeout")); }, attemptTimeout);
+        deadline = setTimer(() => { controller.abort(); reject(new UploadFailure("timeout", stage && { stage })); }, attemptTimeout);
       });
       try {
         // 明示的に成功と返した場合だけ消す。undefined等は成功扱いしない。
@@ -108,17 +131,21 @@ export async function createUploadQueue({
           id: item.id, blob, className: item.className,
           sessionFolderName: item.sessionFolderName, capturedAt: item.capturedAt,
           driveFileId: item.driveFileId || null,
-        }, { persistDriveFileId: (fileId) => store.setDriveFileId(item.id, fileId), signal: controller.signal }), expired]);
-        if (result?.ok !== true) reason = result?.reason;
+        }, { persistDriveFileId: (fileId) => store.setDriveFileId(item.id, fileId), signal: controller.signal,
+          // 制限時間で止まったときに、どの段階で応答がなかったかを残す。
+          progress: (value) => { if (stages.has(value)) stage = value; } }), expired]);
+        if (result?.ok !== true) { reason = result?.reason; detail = failureDetail(result?.detail); }
         if (result?.ok !== true && !reasons.has(reason)) reason = "upload";
-      } catch (error) { reason = error instanceof UploadFailure ? error.reason : "upload"; }
+      } catch (error) {
+        reason = error instanceof UploadFailure ? error.reason : "upload";
+        detail = error instanceof UploadFailure ? error.detail : null;
+      }
       finally { clearTimer(deadline); expired.catch(() => {}); }
       if (reason) {
         const nextRetryAt = reason === "authentication" ? 0 : now() + retryDelay(item.attempts, baseDelay, maximumDelay);
-        await store.fail(item.id, reason, nextRetryAt);
-        await refresh();
-        if (reason !== "authentication") schedule(nextRetryAt - now());
-        return;
+        await store.fail(item.id, reason, nextRetryAt, detail);
+        // 後の画像を送るか全体で待つかは、保存した失敗理由をもとに次のsnapshotが決める。
+        continue;
       }
       // 保存が失敗したときは削除せず待機する。裏へ移ってもこの結果だけは記録する。
       await store.succeed(item.id);

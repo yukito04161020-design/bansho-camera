@@ -195,6 +195,20 @@ test("ページ間で同じIDを重ねて返しても重複扱いせず、名前
   }
 });
 
+test("失敗したHTTP番号とDriveの既知の理由コードだけを持ち、本文の文章は持たない", async () => {
+  for (const [code, kept] of [["storageQuotaExceeded", true], ["sensitive-test-value", false]]) {
+    const f = fixture([], () => json({ error: { code: 403, message: "sensitive-test-value",
+      errors: [{ reason: code, message: "sensitive-test-value" }] } }, 403));
+    await assert.rejects(f.api.ensureSessionFolder(input), (error) => {
+      assert.ok(reason("permission")(error));
+      assert.equal(error.status, 403);
+      assert.equal(error.code, kept ? code : undefined);
+      assert.equal(JSON.stringify({ ...error, message: error.message }).includes("sensitive-test-value"), false);
+      return true;
+    });
+  }
+});
+
 test("403・429・5xx・通信失敗を固定の分類にし、外部本文や例外を漏らさない", async () => {
   for (const [status, expected] of [[403, "permission"], [429, "server"], [503, "server"], [400, "response"]]) {
     const f = fixture([], () => json({ error: "sensitive-test-value" }, status));

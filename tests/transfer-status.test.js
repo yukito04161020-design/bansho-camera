@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { transferSummary, reasonMessages, clockTime } from "../public/transfer-status.js";
+import { transferSummary, reasonMessages, clockTime, failureNote } from "../public/transfer-status.js";
 
 const state = (patch) => ({ pendingCount: 2, status: "waiting", reason: null, nextRetryAt: null, ...patch });
 const tone = (queue, context = { loggedIn: true }) => transferSummary(queue, context);
@@ -40,6 +40,20 @@ test("オフライン・失敗理由・通常の待機をそれぞれの文言�
   }
   assert.equal(tone(state({ reason: "未知" })).detail, `送信待ち2件。${reasonMessages.upload}`);
   assert.deepEqual(tone(state()), { tone: "waiting", label: "送信待ち", detail: "送信待ち2件。前面・オンラインで順に送ります。" });
+});
+
+test("容量不足を区別し、失敗した段階・HTTP番号・理由コードを説明に添える", () => {
+  const quota = tone(state({ reason: "quota", detail: { stage: "send", status: 403, code: "storageQuotaExceeded" } }));
+  assert.equal(quota.tone, "error");
+  assert.equal(quota.label, "容量不足");
+  assert.equal(quota.detail, `送信待ち2件。${reasonMessages.quota}（詳細：画像の送信・HTTP 403・storageQuotaExceeded）`);
+  assert.equal(tone(state({ reason: "network", detail: { stage: "folder" } })).detail,
+    `送信待ち2件。${reasonMessages.network}（詳細：保存先フォルダの確認）`);
+  assert.equal(failureNote({ stage: "start", status: 400 }), "（詳細：送信の開始・HTTP 400）");
+  for (const detail of [null, undefined, {}, { stage: "toString" }, { stage: "不明" }]) assert.equal(failureNote(detail), "");
+  assert.equal(failureNote({ stage: "verify", status: "403", code: "has space" }), "（詳細：送信結果の確認）");
+  // 送信中や要ログインには失敗の詳細を出さない。
+  assert.equal(tone(state({ status: "sending", detail: { stage: "send" } })).detail.includes("詳細"), false);
 });
 
 test("件数を確認できない・端末内保存の異常は確認不可とする", () => {

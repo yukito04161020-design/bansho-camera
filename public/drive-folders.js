@@ -13,12 +13,26 @@ const messages = {
   cancelled: "フォルダ操作を中断しました。",
 };
 
-// 外部のエラー本文や認証情報は保存も返却もしない。
+// Driveのエラー応答から取り出してよい理由コード。本文の文章や認証情報は保存も返却もしない。
+const knownCodes = new Set(["storageQuotaExceeded", "userRateLimitExceeded", "rateLimitExceeded", "dailyLimitExceeded",
+  "sharingRateLimitExceeded", "insufficientPermissions", "insufficientFilePermissions", "appNotAuthorizedToFile",
+  "accessNotConfigured", "forbidden", "domainPolicy", "notFound", "fileIdNotUsable", "invalid", "badRequest",
+  "authError", "parentNotAFolder", "cannotAddParent", "numChildrenInNonRootLimitExceeded"]);
+export async function driveErrorCode(response) {
+  try {
+    const code = (await response.json())?.error?.errors?.[0]?.reason;
+    return knownCodes.has(code) ? code : undefined;
+  } catch { return undefined; }
+}
+
+// 外部のエラー本文や認証情報は保存も返却もしない。失敗箇所の表示用にHTTP番号と既知の理由コードだけを持つ。
 export class DriveFolderError extends Error {
-  constructor(reason) {
+  constructor(reason, { status, code } = {}) {
     super(messages[reason] || messages.response);
     this.name = "DriveFolderError";
     this.reason = Object.hasOwn(messages, reason) ? reason : "response";
+    if (Number.isInteger(status)) this.status = status;
+    if (knownCodes.has(code)) this.code = code;
   }
 }
 
@@ -67,8 +81,12 @@ export function createDriveFolders({ session, fetcher = globalThis.fetch } = {})
       session.invalidate();
       throw new DriveFolderError("authentication");
     }
-    if (!response.ok) throw new DriveFolderError(response.status === 403 ? "permission"
-      : response.status === 429 || response.status >= 500 ? "server" : "response");
+    if (!response.ok) {
+      const code = await driveErrorCode(response);
+      checkCancelled(signal);
+      throw new DriveFolderError(response.status === 403 ? "permission"
+        : response.status === 429 || response.status >= 500 ? "server" : "response", { status: response.status, code });
+    }
     let data;
     try { data = await response.json(); }
     catch { checkCancelled(signal); throw new DriveFolderError("response"); }
