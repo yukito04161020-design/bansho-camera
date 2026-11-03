@@ -46,3 +46,14 @@ test("件数を確認できない・端末内保存の異常は確認不可と�
   assert.equal(tone(state({ pendingCount: null })).label, "確認不可");
   assert.equal(tone(state({ reason: "storage" })).tone, "error");
 });
+
+test("読めない画像は全件なら読込不可、一部なら後回しの件数を添える", () => {
+  const all = tone(state({ unreadableCount: 2 }));
+  assert.equal(all.tone, "error");
+  assert.equal(all.label, "読込不可");
+  assert.equal(all.detail, `送信待ち2件。${reasonMessages.unreadable}`);
+  const some = tone(state({ pendingCount: 3, unreadableCount: 1, status: "sending" }));
+  assert.equal(some.label, "送信中");
+  assert.equal(tone(state({ pendingCount: 3, unreadableCount: 1 })).detail,
+    "送信待ち3件（うち1件は読み込めないため後回し）。前面・オンラインで順に送ります。");
+});

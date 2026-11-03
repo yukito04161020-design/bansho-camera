@@ -73,8 +73,12 @@ test("IndexedDBにBlobと宛先を保存し、新しい接続から同じデー�
     const state = await second.snapshot();
     assert.equal(state.pendingCount, 1);
     assert.equal(state.head.id, id);
-    assert.equal(await state.head.blob.text(), "synthetic test payload");
-    assert.equal(state.head.blob.type, "image/jpeg");
+    // iPhoneで開き直した後も読めるよう、Blobではなくバイト列で保存する。
+    assert.equal("blob" in state.head, false);
+    assert.ok(state.head.bytes instanceof ArrayBuffer);
+    const stored = await second.readImage(id);
+    assert.equal(await stored.text(), "synthetic test payload");
+    assert.equal(stored.type, "image/jpeg");
     assert.equal(state.head.className, "数学");
     assert.equal(state.head.sessionFolderName, "第01回_2026-09-30");
     assert.equal(state.head.capturedAt, Date.parse("2026-09-30T00:00:00Z"));
@@ -430,7 +434,7 @@ test("送信開始を記録した後に終了しても、画像と試行回数�
     const snapshot = await second.snapshot();
     assert.equal(snapshot.pendingCount, 1);
     assert.equal(snapshot.head.attempts, 1);
-    assert.equal(await snapshot.head.blob.text(), "synthetic test payload");
+    assert.equal(await (await second.readImage(id)).text(), "synthetic test payload");
   } finally { second.close(); }
 });
 
@@ -466,4 +470,74 @@ test("応答のない送信は制限時間で中断し、送信中のまま止�
   await sample.advance(retryDelay(1));
   assert.equal(calls, 2);
   assert.equal(sample.queue.snapshot().pendingCount, 0);
+});
+
+// 以前の版が保存した形（Blobだけのレコード）を直接書き込む。
+async function putLegacy(indexedDB, record) {
+  const store = await openUploadStore({ indexedDB });
+  store.close();
+  const db = await new Promise((resolve, reject) => {
+    const request = indexedDB.open("bansho-camera-uploads", 1);
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error);
+  });
+  const id = await new Promise((resolve, reject) => {
+    const tx = db.transaction("uploads", "readwrite");
+    let key;
+    tx.objectStore("uploads").add({ className: "数学", sessionFolderName: "第01回_2026-09-30", capturedAt: 1000,
+      attempts: 0, lastFailure: null, nextRetryAt: 0, ...record }).onsuccess = (event) => { key = event.target.result; };
+    tx.oncomplete = () => resolve(key);
+    tx.onerror = () => reject(tx.error);
+  });
+  db.close();
+  return id;
+}
+
+test("以前の版のBlobだけの画像も読み出してバイト列を書き足し、元のBlobは送信完了まで残す", async () => {
+  const indexedDB = new IDBFactory();
+  const id = await putLegacy(indexedDB, { blob: new Blob(["legacy payload"], { type: "image/jpeg" }) });
+  const store = await openUploadStore({ indexedDB });
+  try {
+    assert.equal(await (await store.readImage(id)).text(), "legacy payload");
+    const { head } = await store.snapshot();
+    assert.ok(head.bytes instanceof ArrayBuffer);
+    assert.equal(await head.blob.text(), "legacy payload");
+    assert.equal(await (await store.readImage(id)).text(), "legacy payload");
+  } finally { store.close(); }
+});
+
+test("読めない画像は消さずに残し、後の画像の送信を止めず、再開操作で読み出しを再試行する", async (t) => {
+  const indexedDB = new IDBFactory();
+  const broken = await putLegacy(indexedDB, { blob: null, capturedAt: 500 });
+  const sent = [];
+  const sample = await setup(t, { indexedDB, visible: true, upload: async (item) => {
+    sent.push(await item.blob.text());
+    return { ok: true };
+  } });
+  await sample.queue.enqueue(image(2000));
+  await sample.queue.retry();
+  assert.deepEqual(sent, ["synthetic test payload"]);
+  let state = sample.queue.snapshot();
+  assert.equal(state.pendingCount, 1);
+  assert.equal(state.unreadableCount, 1);
+  const store = await openUploadStore({ indexedDB, databaseName: "bansho-camera-uploads" });
+  try {
+    const images = await store.images();
+    assert.deepEqual(images.map((image) => image.id), [broken]);
+    await assert.rejects(store.readImage(broken), { name: "ImageUnreadableError" });
+  } finally { store.close(); }
+  await sample.queue.retryUnreadable();
+  state = sample.queue.snapshot();
+  assert.equal(state.pendingCount, 1, "再試行しても読めない画像は消さない");
+  assert.equal(state.unreadableCount, 1);
+});
+
+test("撮影画像を読み出せないときは保存せず失敗を返し、呼び出し側が画像を保持できる", async () => {
+  const store = await openUploadStore({ indexedDB: new IDBFactory() });
+  try {
+    const blob = new Blob(["x"], { type: "image/jpeg" });
+    blob.arrayBuffer = async () => { throw new Error("読めない"); };
+    await assert.rejects(store.add({ ...image(), blob }), { name: "ImageUnreadableError" });
+    assert.equal(await store.count(), 0);
+  } finally { store.close(); }
 });

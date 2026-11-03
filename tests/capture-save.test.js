@@ -77,7 +77,7 @@ test("Drive IDは既存レコードへ永続化し、上書きや不正IDを拒�
   const reopened = await openUploadStore({ indexedDB });
   const state = await reopened.snapshot();
   assert.equal(state.head.driveFileId, "generated_id");
-  assert.equal(state.head.blob.size, blob.size);
+  assert.equal((await reopened.readImage(id)).size, blob.size);
   assert.deepEqual(await reopened.pendingDestinations(), [{ className: "数学", sessionFolderName: "第02回_2026-10-02" }]);
   reopened.close();
 });

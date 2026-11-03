@@ -1,8 +1,8 @@
 import { registerPendingUploadCounter } from "./app-update.js";
-import { openUploadStore } from "./upload-store.js";
+import { openUploadStore, ImageUnreadableError } from "./upload-store.js";
 
 // 外部エラー本文には認証情報が含まれ得るため、既知の分類だけを記録する。
-const reasons = new Set(["network", "server", "permission", "duplicate-folder", "folder", "timeout", "authentication", "upload"]);
+const reasons = new Set(["network", "server", "permission", "duplicate-folder", "folder", "timeout", "unreadable", "authentication", "upload"]);
 export class UploadFailure extends Error {
   constructor(reason) {
     super("送信が完了しませんでした。");
@@ -41,7 +41,7 @@ export async function createUploadQueue({
   registerPendingUploadCounter(async () => (await opening).count());
   const store = await opening;
   const subscribers = new Set();
-  let state = { pendingCount: null, status: "waiting", reason: null, nextRetryAt: null };
+  let state = { pendingCount: null, unreadableCount: 0, status: "waiting", reason: null, nextRetryAt: null };
   let running = null;
   let requested = false;
   let disposed = false;
@@ -68,6 +68,7 @@ export async function createUploadQueue({
     const snapshot = await store.snapshot();
     publish({
       pendingCount: snapshot.pendingCount,
+      unreadableCount: snapshot.unreadableCount || 0,
       status: snapshot.authenticationRequired ? "authentication-required" : "waiting",
       reason: snapshot.authenticationRequired ? "authentication" : snapshot.head?.lastFailure || null,
       nextRetryAt: snapshot.head?.nextRetryAt || null,
@@ -84,6 +85,15 @@ export async function createUploadQueue({
       const item = await store.beginAttempt(snapshot.head.id);
       // DB処理を待つ間に裏へ移った場合も、新たな送信は開始しない。
       if (!item || !eligible()) return;
+      let blob = null;
+      try { blob = await store.readImage(item.id); }
+      catch (error) { if (!(error instanceof ImageUnreadableError)) throw error; /* 読めない画像も消さずに残す。 */ }
+      if (!(blob instanceof Blob)) {
+        // 読めない画像は送信の対象から外して記録を残し、後の画像の送信を続ける。
+        await store.fail(item.id, "unreadable", 0);
+        continue;
+      }
+      if (!eligible()) return;
       publish({ status: "sending", reason: null, nextRetryAt: null });
       let reason = null;
       // 応答が返らない通信でも送信中のまま止まらないよう、制限時間で中断して再送に回す。
@@ -95,7 +105,7 @@ export async function createUploadQueue({
       try {
         // 明示的に成功と返した場合だけ消す。undefined等は成功扱いしない。
         const result = await Promise.race([upload({
-          id: item.id, blob: item.blob, className: item.className,
+          id: item.id, blob, className: item.className,
           sessionFolderName: item.sessionFolderName, capturedAt: item.capturedAt,
           driveFileId: item.driveFileId || null,
         }, { persistDriveFileId: (fileId) => store.setDriveFileId(item.id, fileId), signal: controller.signal }), expired]);
@@ -182,6 +192,14 @@ export async function createUploadQueue({
       return () => subscribers.delete(subscriber);
     },
     retry: kick,
+    // 読めなかった画像の読み出しをもう一度試してから送信を再開する。
+    async retryUnreadable() {
+      if (disposed) return;
+      await store.retryUnreadable();
+      await kick();
+    },
+    images: () => store.images(),
+    readImage: (id) => store.readImage(id),
     async resumeAfterAuthentication() {
       if (disposed) return;
       if (!locks?.request) throw new Error("送信の排他制御を利用できません。");
