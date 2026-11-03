@@ -120,7 +120,8 @@ function render() {
   const token = session.snapshot();
   crop.setLocked(saving);
   $("actual-size").disabled = saving || crop.busy;
-  setCaptureOperationActive(initializing || saving || crop.busy || authorizing || folderLoading || timetableBusy || token.status === "valid");
+  const busy = initializing || saving || crop.busy || authorizing || folderLoading || timetableBusy;
+  setCaptureOperationActive(busy || token.status === "valid", busy);
   let destination = null;
   try { destination = selection(captured?.capturedAt); } catch { /* 未確認や入力不正は撮影前に案内する。 */ }
   const chip = destination ? `${destination.className}・${destination.sessionFolderName.split("_")[0]} ▾` : "授業を選ぶ ▾";

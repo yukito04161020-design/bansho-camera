@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { canApplyUpdate, createUpdateChecker } from "../public/update-policy.js";
+import { canApplyManually, canApplyUpdate, createUpdateChecker } from "../public/update-policy.js";
 
 const idle = { cameraActive: false, imagePreview: false, pageVisible: true, pendingUploads: 0 };
 test("カメラ・画像確認・送信待ちがなく、前面にある場合だけ切り替える", () => {
@@ -14,6 +14,18 @@ test("カメラ・画像確認・送信待ちがなく、前面にある場合�
     assert.equal(canApplyUpdate({ ...idle, ...blocked }), false, JSON.stringify(blocked));
   }
   assert.equal(canApplyUpdate(), false);
+});
+
+test("押して切り替えるときは送信待ちやログイン中でも切り替え、画像の確認中・保存などの処理中・裏では切り替えない", () => {
+  const ready = { imagePreview: false, pageVisible: true, operationBusy: false };
+  assert.equal(canApplyManually(ready), true);
+  // 送れない送信待ちが残っても新しい版にできるよう、送信待ち・カメラ・有効なトークンでは止めない。
+  assert.equal(canApplyManually({ ...ready, cameraActive: true, pendingUploads: 3, operationActive: true }), true);
+  for (const blocked of [{ imagePreview: true }, { pageVisible: false }, { operationBusy: true },
+    { imagePreview: undefined }, { pageVisible: undefined }, { operationBusy: undefined }]) {
+    assert.equal(canApplyManually({ ...ready, ...blocked }), false, JSON.stringify(blocked));
+  }
+  assert.equal(canApplyManually(), false);
 });
 
 function fixture(overrides = {}) {

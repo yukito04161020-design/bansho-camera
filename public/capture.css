@@ -163,3 +163,4 @@ button svg { flex-shrink: 0; }
   #zoom-buttons { width: 52px; height: 220px; flex-shrink: 0; }
   #zoom { left: auto; bottom: 8px; width: 180px; }
 }
+#app-options [data-update-apply] { display: block; margin: 8px 0 12px; color: #FFD60A; border-color: #FFD60A; }
