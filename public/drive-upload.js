@@ -98,9 +98,11 @@ export function createDriveUpload({ session, folders, fetcher = globalThis.fetch
       return verified(await data(sent, signal), item, id, name, destination.folderId);
     } catch (error) {
       if (error instanceof UploadFailure) throw error;
+      // 403だけを権限の問題とし、同名フォルダの重複やフォルダ情報の不備は別の理由で伝える。
       if (error instanceof DriveFolderError) throw new UploadFailure(
         error.reason === "authentication" ? "authentication" : error.reason === "network" || error.reason === "cancelled" ? "network"
-          : error.reason === "server" ? "server" : "permission");
+          : error.reason === "server" ? "server" : error.reason === "permission" ? "permission"
+            : error.reason === "ambiguous" ? "duplicate-folder" : "folder");
       throw new UploadFailure("upload");
     }
   };

@@ -2,7 +2,7 @@ import { registerPendingUploadCounter } from "./app-update.js";
 import { openUploadStore } from "./upload-store.js";
 
 // 外部エラー本文には認証情報が含まれ得るため、既知の分類だけを記録する。
-const reasons = new Set(["network", "server", "permission", "authentication", "upload"]);
+const reasons = new Set(["network", "server", "permission", "duplicate-folder", "folder", "authentication", "upload"]);
 export class UploadFailure extends Error {
   constructor(reason) {
     super("送信が完了しませんでした。");

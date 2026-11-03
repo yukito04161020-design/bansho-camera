@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createDriveUpload } from "../public/drive-upload.js";
+import { DriveFolderError } from "../public/drive-folders.js";
 import { TokenSession, driveFileScope } from "../public/login-logic.js";
 import { UploadFailure, createUploadQueue } from "../public/upload-queue.js";
 import { IDBFactory } from "fake-indexeddb";
@@ -111,6 +112,16 @@ test("401・期限切れ・通信断・403・429・5xxを分類し、外部の�
   assert.equal(expired.calls.length, 0);
   const failed = fixture(() => { throw new Error("sensitive-test-value"); });
   await assert.rejects(failed.uploader(item, { persistDriveFileId: failed.persistDriveFileId }), reason("network"));
+});
+
+test("フォルダの403・同名重複・情報不備をそれぞれ別の理由で返す", async () => {
+  for (const [folderReason, expected] of [["permission", "permission"], ["ambiguous", "duplicate-folder"],
+    ["response", "folder"], ["incomplete", "folder"]]) {
+    const f = fixture();
+    f.folders.ensureSessionFolder = async () => { throw new DriveFolderError(folderReason); };
+    await assert.rejects(f.uploader(item, { persistDriveFileId: f.persistDriveFileId }), reason(expected));
+    assert.equal(f.calls.some((call) => call.options.method === "POST"), false);
+  }
 });
 
 test("裏へ移る・中断する・セッションを取り直すと後続の画像送信を開始しない", async () => {
