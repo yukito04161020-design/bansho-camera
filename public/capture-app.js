@@ -9,6 +9,7 @@ import { captureDestination, captureSettings, saveCapturedImage, createCapturedD
 import { createDriveFolders, DriveFolderError } from "./drive-folders.js";
 import { createDriveUpload } from "./drive-upload.js";
 import { createUploadQueue } from "./upload-queue.js";
+import { transferSummary } from "./transfer-status.js";
 import { returnToCamera, setCaptureBlocked, setCaptureOperationActive, cameraIsNavigating } from "./camera-preview.js";
 import { initializeCameraUi, showSettingsPage, showToast } from "./camera-ui.js";
 import { prepareReviewSave } from "./review-save.js";
@@ -36,6 +37,7 @@ let loginAttempt = 0;
 let authMessage = "";
 let destinationMessage = "";
 let storedMessage = "";
+let lastSentAt = null;
 let timetable = null;
 let timetableSync;
 let timetableBusy = false;
@@ -130,10 +132,11 @@ function render() {
   $("settings-timetable").textContent = `${timetable?.entries.length || 0}コマ`;
   $("settings-camera").textContent = $("camera-name").textContent.replace(/^カメラ：/, "");
   $("settings-app").textContent = $("update-dot").hidden ? "版・更新" : "更新あり";
+  const transfer = transferSummary(queueState, { loggedIn: token.status === "valid", online: navigator.onLine !== false, lastSentAt });
   $("queue-badge").textContent = queueState.pendingCount ?? "?";
-  $("queue-icon").dataset.state = queueState.status;
-  $("queue-icon").dataset.failed = String(Boolean(queueState.reason));
-  $("queue-icon").dataset.empty = String(queueState.pendingCount === 0);
+  $("queue-label").textContent = transfer.label;
+  $("queue-icon").dataset.tone = transfer.tone;
+  $("queue-icon").setAttribute("aria-label", `送信の状態：${transfer.label || "送信待ちなし"}。詳しく確認`);
   $("thumbnail-pending").hidden = !queueState.pendingCount;
   setCaptureBlocked(initializing ? "端末内保存を準備しています。" : saving ? "画像を保存しています。" : false);
   $("destination-status").setAttribute("aria-expanded", String($("options-panel").open));
@@ -161,21 +164,9 @@ function render() {
   document.querySelectorAll("[data-pending-count]").forEach((node) => {
     node.textContent = queueState.pendingCount === null ? "送信待ち：確認できません" : `送信待ち：${queueState.pendingCount}件`;
   });
-  const reasonMessage = {
-    authentication: "Googleログインを取り直すと再開します。画像は端末内に残っています。",
-    permission: "Driveへのアクセスが拒否されました。Drive APIの有効化とログイン中のアカウントを確認してください。画像は端末内に残っています。",
-    "duplicate-folder": "保存先に同名フォルダが複数あります。Driveで整理すると再送できます。画像は端末内に残っています。",
-    folder: "Driveの保存先フォルダを確認できませんでした。時間をおいて再送してください。画像は端末内に残っています。",
-    network: "通信の復帰後、前面で再送します。画像は端末内に残っています。",
-    server: "時間をおいて再送します。画像は端末内に残っています。",
-    timeout: "Driveから応答がないため送信を中断しました。自動で再送します。画像は端末内に残っています。",
-    upload: "送信完了を確認できません。画像を残して再試行します。",
-    storage: "端末内の送信待ちを確認できません。画像確認中なら保存せず閉じないでください。",
-    "locking-unavailable": "このブラウザでは送信の排他制御を利用できません。画像は端末内に残っています。",
-  };
-  const transfer = queueState.status === "sending" ? "ドライブへ送信しています。次の撮影もできます。"
-    : reasonMessage[queueState.reason] || storedMessage || (queueState.pendingCount ? "前面・オンラインで順に送ります。" : "送信待ちはありません。");
-  document.querySelectorAll("[data-transfer-status]").forEach((node) => { node.textContent = transfer; });
+  // 保存直後などの一時的な案内は、送信待ちが通常の待機中のときだけ優先する。
+  const detail = transfer.tone === "waiting" && storedMessage ? storedMessage : transfer.detail;
+  document.querySelectorAll("[data-transfer-status]").forEach((node) => { node.textContent = detail; });
 }
 function showClasses() {
   $("class-list").replaceChildren(...settings.classes.map((name) => {
@@ -373,7 +364,10 @@ async function initialize() {
     showClasses();
     queue.subscribe((state) => {
       if (queueState.pendingCount !== null && state.pendingCount !== null && state.pendingCount < queueState.pendingCount) {
-        storedMessage = "ドライブへの保存が完了しました。";
+        lastSentAt = Date.now();
+        storedMessage = "";
+        // 撮影の邪魔にならないよう、全件の送信が終わったときだけ知らせる。
+        if (state.pendingCount === 0) showToast("ドライブへの送信が完了しました");
       }
       queueState = state;
       render();
@@ -387,6 +381,8 @@ document.addEventListener("visibilitychange", () => {
   if (document.hidden) { controllers.forEach((controller) => controller.abort()); listing += 1; folderLoading = false; }
   else { applyTimetable(); render(); void updateTimetable(); }
 });
+window.addEventListener("online", () => render());
+window.addEventListener("offline", () => render());
 window.addEventListener("pagehide", () => {
   controllers.forEach((controller) => controller.abort());
   session.clear();
