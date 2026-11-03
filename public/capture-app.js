@@ -168,6 +168,7 @@ function render() {
     folder: "Driveの保存先フォルダを確認できませんでした。時間をおいて再送してください。画像は端末内に残っています。",
     network: "通信の復帰後、前面で再送します。画像は端末内に残っています。",
     server: "時間をおいて再送します。画像は端末内に残っています。",
+    timeout: "Driveから応答がないため送信を中断しました。自動で再送します。画像は端末内に残っています。",
     upload: "送信完了を確認できません。画像を残して再試行します。",
     storage: "端末内の送信待ちを確認できません。画像確認中なら保存せず閉じないでください。",
     "locking-unavailable": "このブラウザでは送信の排他制御を利用できません。画像は端末内に残っています。",
@@ -352,6 +353,9 @@ async function initialize() {
     queue = await createUploadQueue({ upload: async (item, context) => {
       const controller = new AbortController();
       controllers.add(controller);
+      // 送信待ち側の制限時間による中断も、この送信に伝える。
+      if (context?.signal?.aborted) controller.abort();
+      context?.signal?.addEventListener("abort", () => controller.abort(), { once: true });
       try { return await upload(item, { ...context, signal: controller.signal }); }
       finally { controllers.delete(controller); }
     } });

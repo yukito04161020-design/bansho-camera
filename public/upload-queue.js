@@ -2,7 +2,7 @@ import { registerPendingUploadCounter } from "./app-update.js";
 import { openUploadStore } from "./upload-store.js";
 
 // 外部エラー本文には認証情報が含まれ得るため、既知の分類だけを記録する。
-const reasons = new Set(["network", "server", "permission", "duplicate-folder", "folder", "authentication", "upload"]);
+const reasons = new Set(["network", "server", "permission", "duplicate-folder", "folder", "timeout", "authentication", "upload"]);
 export class UploadFailure extends Error {
   constructor(reason) {
     super("送信が完了しませんでした。");
@@ -29,10 +29,14 @@ export async function createUploadQueue({
   clearTimer = globalThis.clearTimeout,
   baseDelay = 1000,
   maximumDelay = 60000,
+  attemptTimeout = 120000,
 } = {}) {
   if (typeof upload !== "function") throw new TypeError("送信関数を指定してください。");
   if (!Number.isFinite(baseDelay) || baseDelay < 1 || !Number.isFinite(maximumDelay)
     || maximumDelay < baseDelay || maximumDelay > 2147483647) throw new TypeError("再送間隔が不正です。");
+  if (!Number.isFinite(attemptTimeout) || attemptTimeout < 1 || attemptTimeout > 2147483647) {
+    throw new TypeError("送信の制限時間が不正です。");
+  }
   const opening = openUploadStore({ indexedDB, databaseName });
   registerPendingUploadCounter(async () => (await opening).count());
   const store = await opening;
@@ -82,16 +86,23 @@ export async function createUploadQueue({
       if (!item || !eligible()) return;
       publish({ status: "sending", reason: null, nextRetryAt: null });
       let reason = null;
+      // 応答が返らない通信でも送信中のまま止まらないよう、制限時間で中断して再送に回す。
+      const controller = new AbortController();
+      let deadline = null;
+      const expired = new Promise((resolve, reject) => {
+        deadline = setTimer(() => { controller.abort(); reject(new UploadFailure("timeout")); }, attemptTimeout);
+      });
       try {
         // 明示的に成功と返した場合だけ消す。undefined等は成功扱いしない。
-        const result = await upload({
+        const result = await Promise.race([upload({
           id: item.id, blob: item.blob, className: item.className,
           sessionFolderName: item.sessionFolderName, capturedAt: item.capturedAt,
           driveFileId: item.driveFileId || null,
-        }, { persistDriveFileId: (fileId) => store.setDriveFileId(item.id, fileId) });
+        }, { persistDriveFileId: (fileId) => store.setDriveFileId(item.id, fileId), signal: controller.signal }), expired]);
         if (result?.ok !== true) reason = result?.reason;
         if (result?.ok !== true && !reasons.has(reason)) reason = "upload";
       } catch (error) { reason = error instanceof UploadFailure ? error.reason : "upload"; }
+      finally { clearTimer(deadline); expired.catch(() => {}); }
       if (reason) {
         const nextRetryAt = reason === "authentication" ? 0 : now() + retryDelay(item.attempts, baseDelay, maximumDelay);
         await store.fail(item.id, reason, nextRetryAt);

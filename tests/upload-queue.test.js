@@ -443,3 +443,27 @@ test("空画像・不正な宛先と日時を保存せず、再送間隔を上�
   assert.equal(await sample.queue.count(), 0);
   assert.deepEqual([1, 2, 3, 10, 1000].map((count) => retryDelay(count)), [1000, 2000, 4000, 60000, 60000]);
 });
+
+test("応答のない送信は制限時間で中断し、送信中のまま止まらず再送を予約する", async (t) => {
+  let signal = null;
+  let calls = 0;
+  const sample = await setup(t, { attemptTimeout: 5000, upload: async (item, context) => {
+    calls += 1;
+    if (calls > 1) return { ok: true };
+    signal = context.signal;
+    return new Promise(() => {});
+  } });
+  await sample.queue.enqueue(image());
+  sample.document.visibilityState = "visible";
+  sample.document.dispatchEvent(new Event("visibilitychange"));
+  for (let i = 0; i < 50 && sample.queue.snapshot().status !== "sending"; i += 1) await new Promise((done) => setTimeout(done, 1));
+  assert.equal(sample.queue.snapshot().status, "sending");
+  await sample.advance(5000);
+  assert.equal(signal.aborted, true);
+  assert.equal(sample.queue.snapshot().status, "waiting");
+  assert.equal(sample.queue.snapshot().reason, "timeout");
+  assert.equal(sample.queue.snapshot().pendingCount, 1);
+  await sample.advance(retryDelay(1));
+  assert.equal(calls, 2);
+  assert.equal(sample.queue.snapshot().pendingCount, 0);
+});
