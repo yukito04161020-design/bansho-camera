@@ -80,8 +80,14 @@ export async function createUploadQueue({
     if (!eligible()) return;
     timer = setTimer(() => { timer = null; void kick(); }, Math.max(1, Math.min(2147483647, delay)));
   }
-  async function refresh() {
+  async function refresh({ continuing = false } = {}) {
     const snapshot = await store.snapshot({ now: now(), waitAll: waitingReasons });
+    // 続けて送る画像があるときは、画像の間に「送信待ち」や先頭の失敗を挟まず送信中のまま示す。
+    if (continuing && !snapshot.authenticationRequired && snapshot.next && eligible()) {
+      publish({ pendingCount: snapshot.pendingCount, unreadableCount: snapshot.unreadableCount || 0,
+        status: "sending", reason: null, detail: null, nextRetryAt: null });
+      return snapshot;
+    }
     publish({
       pendingCount: snapshot.pendingCount,
       unreadableCount: snapshot.unreadableCount || 0,
@@ -95,8 +101,8 @@ export async function createUploadQueue({
 
   async function drain() {
     while (!disposed) {
-      const snapshot = await refresh();
-      if (!eligible() || snapshot.authenticationRequired) return;
+      const snapshot = await refresh({ continuing: state.status === "sending" });
+      if (!eligible() || snapshot.authenticationRequired) { if (state.status === "sending") await refresh(); return; }
       const next = snapshot.next;
       if (!next) {
         // 今送れる画像がなければ、最も早い再送時刻に予約する。
@@ -112,9 +118,10 @@ export async function createUploadQueue({
         continue;
       }
       // DB処理を待つ間に裏へ移った場合も、新たな送信は開始しない。
-      if (!eligible()) return;
+      // 送信中の表示のまま止まらないよう、送らずに戻るときは状態を読み直す。
+      if (!eligible()) { await refresh(); return; }
       const item = await store.beginAttempt(next.id);
-      if (!item || !eligible()) return;
+      if (!item || !eligible()) { await refresh(); return; }
       publish({ status: "sending", reason: null, detail: null, nextRetryAt: null });
       let reason = null;
       let detail = null;

@@ -740,3 +740,23 @@ test("読めない画像は記録を書き換えずに後回しにし、書き�
   t.after(() => store.close());
   assert.deepEqual((await store.images()).map((item) => item.id), [broken]);
 });
+
+test("続けて送る画像があるときは、先頭の失敗があっても画像の間で送信中のまま示す", async (t) => {
+  let first;
+  const sample = await setup(t, { upload: async (item) => (item.id === first ? { ok: false, reason: "folder" } : { ok: true }) });
+  first = await sample.queue.enqueue(image(1000));
+  await sample.queue.enqueue(image(2000));
+  await sample.queue.enqueue(image(3000));
+  const statuses = [];
+  sample.queue.subscribe((state) => statuses.push(state.status === "sending" ? "送信中" : state.reason || state.status));
+  statuses.length = 0;
+  await sample.foreground();
+  // 先頭の失敗の後は、残りを送り終えるまで「送信失敗」を挟まない。
+  const firstSending = statuses.indexOf("送信中");
+  const lastSending = statuses.lastIndexOf("送信中");
+  assert.ok(firstSending >= 0);
+  assert.deepEqual([...new Set(statuses.slice(firstSending, lastSending + 1))], ["送信中"]);
+  assert.equal(sample.queue.snapshot().status, "waiting");
+  assert.equal(sample.queue.snapshot().reason, "folder");
+  assert.equal(await sample.queue.count(), 1);
+});

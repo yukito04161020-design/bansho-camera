@@ -5,7 +5,7 @@ import { createTimetableEditor } from "./timetable-editor.js";
 import { config } from "./config.js";
 import { TokenSession, tokenClientOptions } from "./login-logic.js";
 import { classFolderName, FolderNameError, japanDate } from "./folder-logic.js";
-import { captureDestination, captureSettings, saveCapturedImage, createCapturedDraft } from "./capture-save.js";
+import { captureDestination, captureSettings, saveCapturedImage, createCapturedDraft, learnedLessons } from "./capture-save.js";
 import { createDriveFolders, DriveFolderError } from "./drive-folders.js";
 import { createDriveUpload } from "./drive-upload.js";
 import { createUploadQueue } from "./upload-queue.js";
@@ -60,6 +60,14 @@ function namesFor(className) {
   const cached = settings.lessons.find((lesson) => lesson.className === className);
   if (!cached) return null;
   return [...new Set([...cached.names, ...pending.filter((item) => item.className === className).map((item) => item.sessionFolderName)])];
+}
+// 送れた保存先を回一覧の記憶に加え、送信待ちから消えた後も次の撮影の番号決めに使う。
+function learnFolder(className, folderName) {
+  if (!settings) return;
+  const lessons = learnedLessons(settings.lessons, className, folderName);
+  if (lessons === settings.lessons) return;
+  settings.lessons = lessons;
+  void remember();
 }
 function selection(capturedAt = Date.now()) {
   const existingNames = namesFor(settings.selectedClass);
@@ -378,8 +386,11 @@ async function initialize() {
       // 送信待ち側の制限時間による中断も、この送信に伝える。
       if (context?.signal?.aborted) controller.abort();
       context?.signal?.addEventListener("abort", () => controller.abort(), { once: true });
-      try { return await upload(item, { ...context, signal: controller.signal }); }
-      finally { controllers.delete(controller); }
+      try {
+        const result = await upload(item, { ...context, signal: controller.signal });
+        if (result?.ok === true) learnFolder(item.className, result.folderName);
+        return result;
+      } finally { controllers.delete(controller); }
     } });
     settings = await queue.readCaptureSettings();
     timetableSync = createTimetableSync({ store: queue,
