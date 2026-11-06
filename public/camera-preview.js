@@ -54,8 +54,10 @@ let captureController = null;
 let captureWaitController = null;
 let captureBlocked = false;
 let operationActive = false;
+let operationBusy = false;
 export function setCaptureBlocked(value) { captureBlocked = value; updateVideoState(); }
-export function setCaptureOperationActive(value) { operationActive = Boolean(value); }
+// busyは保存などの処理中だけ。ログインの保持だけなら、押して新しい版に切り替えられる。
+export function setCaptureOperationActive(value, busy = value) { operationActive = Boolean(value); operationBusy = Boolean(busy); }
 export function cameraIsNavigating() { return updates.isNavigating(); }
 let range = null;
 let currentDeviceId = "";
@@ -551,4 +553,5 @@ const updates = initializeUpdates(() => ({
   cameraActive: starting || Boolean(stream),
   imagePreview: !imageScreen.hidden,
   operationActive,
+  operationBusy,
 }));

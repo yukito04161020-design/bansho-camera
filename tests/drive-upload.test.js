@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createDriveUpload } from "../public/drive-upload.js";
+import { DriveFolderError } from "../public/drive-folders.js";
 import { TokenSession, driveFileScope } from "../public/login-logic.js";
 import { UploadFailure, createUploadQueue } from "../public/upload-queue.js";
 import { IDBFactory } from "fake-indexeddb";
@@ -113,6 +114,16 @@ test("401・期限切れ・通信断・403・429・5xxを分類し、外部の�
   await assert.rejects(failed.uploader(item, { persistDriveFileId: failed.persistDriveFileId }), reason("network"));
 });
 
+test("フォルダの403・同名重複・情報不備をそれぞれ別の理由で返す", async () => {
+  for (const [folderReason, expected] of [["permission", "permission"], ["ambiguous", "duplicate-folder"],
+    ["response", "folder"], ["incomplete", "folder"]]) {
+    const f = fixture();
+    f.folders.ensureSessionFolder = async () => { throw new DriveFolderError(folderReason); };
+    await assert.rejects(f.uploader(item, { persistDriveFileId: f.persistDriveFileId }), reason(expected));
+    assert.equal(f.calls.some((call) => call.options.method === "POST"), false);
+  }
+});
+
 test("裏へ移る・中断する・セッションを取り直すと後続の画像送信を開始しない", async () => {
   const hidden = fixture(() => { hidden.setActive(false); return json({ ids: ["image_id"] }); });
   await assert.rejects(hidden.uploader(item, { persistDriveFileId: hidden.persistDriveFileId }), reason("network"));
@@ -127,6 +138,55 @@ test("裏へ移る・中断する・セッションを取り直すと後続の�
   });
   await assert.rejects(renewed.uploader(item, { persistDriveFileId: renewed.persistDriveFileId }), reason("authentication"));
   assert.equal(renewed.session.snapshot().status, "valid");
+});
+
+test("送信の段階を順に知らせ、失敗した段階とHTTP番号を返す", async () => {
+  const stages = [];
+  const f = fixture();
+  assert.deepEqual(await f.uploader(item, { persistDriveFileId: f.persistDriveFileId, progress: (stage) => stages.push(stage) }), { ok: true });
+  assert.deepEqual(stages, ["id", "folder", "check", "start", "send", "verify"]);
+  const lost = fixture((url, options) => { if (options.method === "PUT") throw new Error("sensitive-test-value"); });
+  await assert.rejects(lost.uploader(item, { persistDriveFileId: lost.persistDriveFileId }), (error) => {
+    assert.ok(reason("network")(error));
+    assert.deepEqual(error.detail, { stage: "send" });
+    return true;
+  });
+  const rejected = fixture((url, options) => options.method === "POST" ? json({}, 400) : undefined);
+  await assert.rejects(rejected.uploader(item, { persistDriveFileId: rejected.persistDriveFileId }), (error) => {
+    assert.ok(reason("upload")(error));
+    assert.deepEqual(error.detail, { stage: "start", status: 400 });
+    return true;
+  });
+  const mismatch = fixture(() => json({ ...metadata, size: "0" }));
+  await assert.rejects(mismatch.uploader({ ...item, driveFileId: "image_id" }), (error) => {
+    assert.deepEqual(error.detail, { stage: "verify" });
+    return true;
+  });
+});
+
+test("Driveの403は容量不足・利用制限・権限を理由コードで分け、既知のコードだけを残す", async () => {
+  const driveError = (code) => json({ error: { code: 403, message: "sensitive-test-value",
+    errors: [{ reason: code, message: "sensitive-test-value", domain: "usageLimits" }] } }, 403);
+  for (const [code, expected, kept] of [["storageQuotaExceeded", "quota", true], ["userRateLimitExceeded", "server", true],
+    ["rateLimitExceeded", "server", true], ["insufficientPermissions", "permission", true], ["sensitive-test-value", "permission", false]]) {
+    const f = fixture((url, options) => options.method === "PUT" ? driveError(code) : undefined);
+    await assert.rejects(f.uploader(item, { persistDriveFileId: f.persistDriveFileId }), (error) => {
+      assert.ok(reason(expected)(error), code);
+      assert.deepEqual(error.detail, { stage: "send", status: 403, ...(kept ? { code } : {}) });
+      assert.equal(JSON.stringify(error.detail).includes("sensitive-test-value"), false);
+      assert.equal(error.stack.includes("sensitive-test-value"), false);
+      return true;
+    });
+  }
+  for (const [code, expected] of [["storageQuotaExceeded", "quota"], ["userRateLimitExceeded", "server"], [undefined, "permission"]]) {
+    const f = fixture();
+    f.folders.ensureSessionFolder = async () => { throw new DriveFolderError("permission", { status: 403, code }); };
+    await assert.rejects(f.uploader(item, { persistDriveFileId: f.persistDriveFileId }), (error) => {
+      assert.ok(reason(expected)(error));
+      assert.deepEqual(error.detail, { stage: "folder", status: 403, ...(code ? { code } : {}) });
+      return true;
+    });
+  }
 });
 
 test("IndexedDBと送信待ちを開き直しても、応答消失後は同じDrive IDを再利用する", async () => {

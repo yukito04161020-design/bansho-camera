@@ -9,6 +9,8 @@ import { captureDestination, captureSettings, saveCapturedImage, createCapturedD
 import { createDriveFolders, DriveFolderError } from "./drive-folders.js";
 import { createDriveUpload } from "./drive-upload.js";
 import { createUploadQueue } from "./upload-queue.js";
+import { transferSummary } from "./transfer-status.js";
+import { createPendingBackup } from "./photo-backup.js";
 import { returnToCamera, setCaptureBlocked, setCaptureOperationActive, cameraIsNavigating } from "./camera-preview.js";
 import { initializeCameraUi, showSettingsPage, showToast } from "./camera-ui.js";
 import { prepareReviewSave } from "./review-save.js";
@@ -36,6 +38,9 @@ let loginAttempt = 0;
 let authMessage = "";
 let destinationMessage = "";
 let storedMessage = "";
+let lastSentAt = null;
+let backup = null;
+let backupBusy = false;
 let timetable = null;
 let timetableSync;
 let timetableBusy = false;
@@ -115,7 +120,8 @@ function render() {
   const token = session.snapshot();
   crop.setLocked(saving);
   $("actual-size").disabled = saving || crop.busy;
-  setCaptureOperationActive(initializing || saving || crop.busy || authorizing || folderLoading || timetableBusy || token.status === "valid");
+  const busy = initializing || saving || crop.busy || authorizing || folderLoading || timetableBusy;
+  setCaptureOperationActive(busy || token.status === "valid", busy);
   let destination = null;
   try { destination = selection(captured?.capturedAt); } catch { /* 未確認や入力不正は撮影前に案内する。 */ }
   const chip = destination ? `${destination.className}・${destination.sessionFolderName.split("_")[0]} ▾` : "授業を選ぶ ▾";
@@ -130,10 +136,11 @@ function render() {
   $("settings-timetable").textContent = `${timetable?.entries.length || 0}コマ`;
   $("settings-camera").textContent = $("camera-name").textContent.replace(/^カメラ：/, "");
   $("settings-app").textContent = $("update-dot").hidden ? "版・更新" : "更新あり";
+  const transfer = transferSummary(queueState, { loggedIn: token.status === "valid", online: navigator.onLine !== false, lastSentAt });
   $("queue-badge").textContent = queueState.pendingCount ?? "?";
-  $("queue-icon").dataset.state = queueState.status;
-  $("queue-icon").dataset.failed = String(Boolean(queueState.reason));
-  $("queue-icon").dataset.empty = String(queueState.pendingCount === 0);
+  $("queue-label").textContent = transfer.label;
+  $("queue-icon").dataset.tone = transfer.tone;
+  $("queue-icon").setAttribute("aria-label", `送信の状態：${transfer.label || "送信待ちなし"}。詳しく確認`);
   $("thumbnail-pending").hidden = !queueState.pendingCount;
   setCaptureBlocked(initializing ? "端末内保存を準備しています。" : saving ? "画像を保存しています。" : false);
   $("destination-status").setAttribute("aria-expanded", String($("options-panel").open));
@@ -158,21 +165,15 @@ function render() {
   $("back").disabled = saving || crop.busy;
   $("review-options").disabled = saving || crop.busy;
   $("retry-upload").disabled = !queue || saving || authorizing || queueState.status === "sending";
+  $("backup-photos").disabled = !queue || backupBusy || !queueState.pendingCount;
+  $("backup-photos").textContent = backup?.ready() ? "写真アプリに保存する" : "送信待ちの画像を写真に保存";
+  $("backup-photos").setAttribute("aria-label", $("backup-photos").textContent);
   document.querySelectorAll("[data-pending-count]").forEach((node) => {
     node.textContent = queueState.pendingCount === null ? "送信待ち：確認できません" : `送信待ち：${queueState.pendingCount}件`;
   });
-  const reasonMessage = {
-    authentication: "Googleログインを取り直すと再開します。画像は端末内に残っています。",
-    permission: "保存先・回数・Driveの権限を確認してください。画像は端末内に残っています。",
-    network: "通信の復帰後、前面で再送します。画像は端末内に残っています。",
-    server: "時間をおいて再送します。画像は端末内に残っています。",
-    upload: "送信完了を確認できません。画像を残して再試行します。",
-    storage: "端末内の送信待ちを確認できません。画像確認中なら保存せず閉じないでください。",
-    "locking-unavailable": "このブラウザでは送信の排他制御を利用できません。画像は端末内に残っています。",
-  };
-  const transfer = queueState.status === "sending" ? "ドライブへ送信しています。次の撮影もできます。"
-    : reasonMessage[queueState.reason] || storedMessage || (queueState.pendingCount ? "前面・オンラインで順に送ります。" : "送信待ちはありません。");
-  document.querySelectorAll("[data-transfer-status]").forEach((node) => { node.textContent = transfer; });
+  // 保存直後などの一時的な案内は、送信待ちが通常の待機中のときだけ優先する。
+  const detail = transfer.tone === "waiting" && storedMessage ? storedMessage : transfer.detail;
+  document.querySelectorAll("[data-transfer-status]").forEach((node) => { node.textContent = detail; });
 }
 function showClasses() {
   $("class-list").replaceChildren(...settings.classes.map((name) => {
@@ -296,11 +297,33 @@ $("session-number").addEventListener("input", () => {
   render();
 });
 $("refresh-folders").addEventListener("click", () => { void refreshClasses(); });
+$("backup-photos").addEventListener("click", async () => {
+  if (!queue || backupBusy) return;
+  backup ??= createPendingBackup({ list: () => queue.images(), read: (id) => queue.readImage(id) });
+  backupBusy = true;
+  try {
+    if (backup.ready()) {
+      const result = await backup.share();
+      $("backup-status").textContent = { shared: "写真アプリへの保存を開きました。送信待ちの画像はそのまま残っています。",
+        cancelled: "保存を取りやめました。もう一度押すと保存できます。",
+        unsupported: "このブラウザでは写真へまとめて保存できません。",
+        failed: "写真への保存を開けません。再試行してください。", empty: "" }[result];
+    } else {
+      $("backup-status").textContent = "端末内の画像を読み込んでいます。";
+      render();
+      const { count, unreadable } = await backup.prepare();
+      $("backup-status").textContent = count
+        ? `${count}枚を準備しました。「写真アプリに保存する」を押してください。${unreadable ? `${unreadable}枚は読み込めませんでした（消さずに残しています）。` : ""}`
+        : "読み込める画像がありませんでした。送信待ちの画像は消さずに残しています。";
+    }
+  } catch { $("backup-status").textContent = "端末内の画像を読み込めませんでした。送信待ちの画像は消さずに残しています。"; }
+  finally { backupBusy = false; render(); }
+});
 $("retry-upload").addEventListener("click", () => {
   storedMessage = "";
   if (session.snapshot().status === "valid" && queueState.status === "authentication-required") {
     void queue.resumeAfterAuthentication().catch(() => { storedMessage = "送信を再開できません。"; render(); });
-  } else void queue.retry();
+  } else void queue.retryUnreadable().catch(() => { storedMessage = "送信を再開できません。"; render(); });
 });
 document.addEventListener("bansho-captured", (event) => {
   applyTimetable(event.detail.capturedAt);
@@ -344,12 +367,17 @@ $("save-image").addEventListener("click", async () => {
 });
 
 async function initialize() {
+  // ブラウザが空き容量の確保のために端末内の送信待ちを消さないよう、永続化を求める。
+  try { void navigator.storage?.persist?.().catch(() => {}); } catch { /* 非対応でも撮影と送信は続ける。 */ }
   setCaptureBlocked(true);
   setCaptureOperationActive(true);
   try {
     queue = await createUploadQueue({ upload: async (item, context) => {
       const controller = new AbortController();
       controllers.add(controller);
+      // 送信待ち側の制限時間による中断も、この送信に伝える。
+      if (context?.signal?.aborted) controller.abort();
+      context?.signal?.addEventListener("abort", () => controller.abort(), { once: true });
       try { return await upload(item, { ...context, signal: controller.signal }); }
       finally { controllers.delete(controller); }
     } });
@@ -367,7 +395,10 @@ async function initialize() {
     showClasses();
     queue.subscribe((state) => {
       if (queueState.pendingCount !== null && state.pendingCount !== null && state.pendingCount < queueState.pendingCount) {
-        storedMessage = "ドライブへの保存が完了しました。";
+        lastSentAt = Date.now();
+        storedMessage = "";
+        // 撮影の邪魔にならないよう、全件の送信が終わったときだけ知らせる。
+        if (state.pendingCount === 0) showToast("ドライブへの送信が完了しました");
       }
       queueState = state;
       render();
@@ -381,6 +412,8 @@ document.addEventListener("visibilitychange", () => {
   if (document.hidden) { controllers.forEach((controller) => controller.abort()); listing += 1; folderLoading = false; }
   else { applyTimetable(); render(); void updateTimetable(); }
 });
+window.addEventListener("online", () => render());
+window.addEventListener("offline", () => render());
 window.addEventListener("pagehide", () => {
   controllers.forEach((controller) => controller.abort());
   session.clear();

@@ -22,7 +22,7 @@
         <header class="overlay top">
           <button id="login-icon" type="button" aria-label="Googleにログイン"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 22v-3a8 8 0 0 1 16 0v3"/><path id="login-warning" d="M20 2v5m0 2v1"/></svg></button>
           <button id="destination-status" type="button" aria-label="授業と回を選ぶ" aria-controls="options-panel" aria-expanded="false">授業を選ぶ</button>
-          <button id="queue-icon" type="button" aria-label="送信の状態を確認"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 18h12a4 4 0 0 0 0-8 6 6 0 0 0-11-2 5 5 0 0 0-1 10Z"/></svg><span id="queue-badge">0</span></button>
+          <button id="queue-icon" type="button" aria-label="送信の状態を確認"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 18h12a4 4 0 0 0 0-8 6 6 0 0 0-11-2 5 5 0 0 0-1 10Z"/></svg><span id="queue-badge">0</span><span id="queue-label"></span></button>
         </header>
         <div id="toast" role="status" hidden></div>
         <div id="camera-start"><button id="start" type="button" aria-label="カメラを開始">カメラを開始</button><p>カメラの使用を許可してください。</p></div>
@@ -129,9 +129,9 @@
         </form>
       </section>
 
-      <section id="app-options" data-settings-detail hidden><h3>アプリ</h3><p class="version">版：<span data-app-version>開発版</span></p><p data-update-status role="status"></p><a href="./">ホームに戻る</a></section>
+      <section id="app-options" data-settings-detail hidden><h3>アプリ</h3><p class="version">版：<span data-app-version>開発版</span></p><p data-update-status role="status"></p><button type="button" data-update-apply hidden aria-label="新しい版に切り替える">新しい版に切り替える</button><a href="./">ホームに戻る</a></section>
       <div class="sr-only"><p id="preference-status"></p><p id="status" role="status"></p><p id="wake-status"></p></div>
-      <section id="transfer-options" data-settings-detail hidden><p data-pending-count></p><p data-transfer-status role="status"></p><button id="retry-upload" type="button" disabled aria-label="送信を再開する">送信を再開する</button></section>
+      <section id="transfer-options" data-settings-detail hidden><p data-pending-count></p><p data-transfer-status role="status"></p><button id="retry-upload" type="button" disabled aria-label="送信を再開する">送信を再開する</button><button id="backup-photos" type="button" disabled aria-label="送信待ちの画像を写真に保存">送信待ちの画像を写真に保存</button><p id="backup-status" role="status"></p></section>
     </dialog>
     <dialog id="camera-comparison" aria-labelledby="comparison-title">
       <h2 id="comparison-title">カメラの撮り比べ</h2>

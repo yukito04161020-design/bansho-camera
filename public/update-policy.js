@@ -4,6 +4,12 @@ export function canApplyUpdate({ cameraActive, imagePreview, pageVisible, pendin
     && operationActive === false;
 }
 
+// 利用者が押した切り替えは、送信待ちやログイン中でも行う（送信待ちは端末内に残り、開き直した後に送る）。
+// 未保存の撮影画像や保存中の内容を失わないよう、画像の確認中・保存などの処理中・裏にいる間は切り替えない。
+export function canApplyManually({ imagePreview, pageVisible, operationBusy } = {}) {
+  return imagePreview === false && pageVisible === true && operationBusy === false;
+}
+
 export function createUpdateChecker({ currentVersion, readLatestVersion, readPendingUploads, getActivity, applyUpdate }) {
   let checking = false;
   let applying = false;
