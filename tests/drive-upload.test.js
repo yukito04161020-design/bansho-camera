@@ -50,7 +50,7 @@ function fixture(hook) {
 
 test("IDの永続化後にresumableを開始し、JPEGと保存先・サイズを確認して成功を返す", async () => {
   const f = fixture();
-  assert.deepEqual(await f.uploader(item, { persistDriveFileId: f.persistDriveFileId }), { ok: true });
+  assert.deepEqual(await f.uploader(item, { persistDriveFileId: f.persistDriveFileId }), { ok: true, folderName: "第01回_2026-10-02" });
   assert.deepEqual(f.savedIds, ["image_id"]);
   assert.deepEqual(f.calls.map((call) => call.options.method || "GET"), ["GET", "GET", "POST", "PUT"]);
 });
@@ -64,7 +64,7 @@ test("IDを保存できなければフォルダ作成・画像送信を始めな
 
 test("保存済みIDで成功済みファイルを再確認し、再生成・再送しない", async () => {
   const f = fixture(() => json(metadata));
-  assert.deepEqual(await f.uploader({ ...item, driveFileId: "image_id" }), { ok: true });
+  assert.deepEqual(await f.uploader({ ...item, driveFileId: "image_id" }), { ok: true, folderName: "第01回_2026-10-02" });
   assert.equal(f.calls.length, 1);
 });
 
@@ -75,7 +75,7 @@ test("409だけでは成功扱いせず、同じIDのファイルが一致する
       if (url.pathname === "/drive/v3/files/image_id" && calls.length > 2) return json({ ...metadata, ...(bad ? { parents: ["wrong_folder"] } : {}) });
     });
     if (bad) await assert.rejects(f.uploader(item, { persistDriveFileId: f.persistDriveFileId }), reason("upload"));
-    else assert.deepEqual(await f.uploader(item, { persistDriveFileId: f.persistDriveFileId }), { ok: true });
+    else assert.deepEqual(await f.uploader(item, { persistDriveFileId: f.persistDriveFileId }), { ok: true, folderName: "第01回_2026-10-02" });
     assert.equal(f.calls.some((call) => call.options.method === "PUT"), false);
   }
 });
@@ -143,7 +143,7 @@ test("裏へ移る・中断する・セッションを取り直すと後続の�
 test("送信の段階を順に知らせ、失敗した段階とHTTP番号を返す", async () => {
   const stages = [];
   const f = fixture();
-  assert.deepEqual(await f.uploader(item, { persistDriveFileId: f.persistDriveFileId, progress: (stage) => stages.push(stage) }), { ok: true });
+  assert.deepEqual(await f.uploader(item, { persistDriveFileId: f.persistDriveFileId, progress: (stage) => stages.push(stage) }), { ok: true, folderName: "第01回_2026-10-02" });
   assert.deepEqual(stages, ["id", "folder", "check", "start", "send", "verify"]);
   const lost = fixture((url, options) => { if (options.method === "PUT") throw new Error("sensitive-test-value"); });
   await assert.rejects(lost.uploader(item, { persistDriveFileId: lost.persistDriveFileId }), (error) => {
@@ -214,4 +214,31 @@ test("IndexedDBと送信待ちを開き直しても、応答消失後は同じDr
   assert.equal(f.calls.filter((call) => call.url.pathname.endsWith("generateIds")).length, 1);
   assert.equal(f.calls.filter((call) => call.options.method === "PUT").length, 1);
   await second.dispose();
+});
+
+test("撮影時の回の番号がDriveで別の日付に使われていたら、日付を保って同じ日付か次の番号のフォルダへ送る", async () => {
+  const { FolderNameError } = await import("../public/folder-logic.js");
+  const f = fixture();
+  const selections = [];
+  f.folders.ensureSessionFolder = async (selection) => {
+    selections.push(selection);
+    if (selection.manualSession !== undefined) throw new FolderNameError("collision");
+    return { name: "第02回_2026-10-02", folderId: "folder_id" };
+  };
+  assert.deepEqual(await f.uploader(item, { persistDriveFileId: f.persistDriveFileId }), { ok: true, folderName: "第02回_2026-10-02" });
+  assert.deepEqual(selections, [{ className: "数学", capturedAt: item.capturedAt, manualSession: 1 },
+    { className: "数学", capturedAt: item.capturedAt }]);
+  // 日付の違うフォルダには送らない。
+  const other = fixture();
+  other.folders.ensureSessionFolder = async (selection) => {
+    if (selection.manualSession !== undefined) throw new FolderNameError("collision");
+    return { name: "第02回_2026-10-03", folderId: "folder_id" };
+  };
+  await assert.rejects(other.uploader(item, { persistDriveFileId: other.persistDriveFileId }), reason("upload"));
+  assert.equal(other.calls.some((call) => call.options.method === "POST"), false);
+  // 番号の衝突以外の命名規則の問題は、保存先の失敗として伝える。
+  const invalid = fixture();
+  invalid.folders.ensureSessionFolder = async () => { throw new FolderNameError("className"); };
+  await assert.rejects(invalid.uploader(item, { persistDriveFileId: invalid.persistDriveFileId }),
+    (error) => error instanceof UploadFailure && error.reason === "folder" && error.detail?.stage === "folder");
 });

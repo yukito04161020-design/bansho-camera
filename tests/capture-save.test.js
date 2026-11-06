@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { IDBFactory } from "fake-indexeddb";
-import { captureDestination, captureSettings, saveCapturedImage } from "../public/capture-save.js";
+import { captureDestination, captureSettings, saveCapturedImage, learnedLessons } from "../public/capture-save.js";
 import { openUploadStore } from "../public/upload-store.js";
 
 const blob = new Blob(["synthetic-only"], { type: "image/jpeg" });
@@ -130,4 +130,19 @@ test("撮影不可のすべての状態に日本語の理由を返し、撮影�
     assert.match(captureDisabledReason({ ...ready, ...state }), /[ぁ-んァ-ヶ一-龠]/);
   }
   assert.equal(captureDisabledReason({ ...ready, blocked: "画像を保存しています。" }), "画像を保存しています。");
+});
+
+test("送れたフォルダ名を確認済みの回一覧に加え、次の撮影では送信待ちが消えても同じ日の回を使う", () => {
+  const lessons = [{ className: "数学", names: ["第01回_2026-10-01"] }, { className: "英語", names: [] }];
+  const learned = learnedLessons(lessons, "数学", "第02回_2026-10-02");
+  assert.deepEqual(learned[0].names, ["第01回_2026-10-01", "第02回_2026-10-02"]);
+  assert.equal(learned[1], lessons[1]);
+  assert.deepEqual(lessons[0].names, ["第01回_2026-10-01"], "元の一覧を書き換えない");
+  // 同じ日の2枚目は、送信待ちが空でも記憶した回へ入り、別の番号に分かれない。
+  const capturedAt = "2026-10-02T03:00:00Z";
+  assert.equal(captureDestination({ className: "数学", existingNames: learned[0].names, capturedAt }).sessionFolderName, "第02回_2026-10-02");
+  // 確認していない授業・重複・不正な値では変えない。
+  for (const args of [["物理", "第01回_2026-10-02"], ["数学", "第01回_2026-10-01"], ["数学", ""], ["数学", undefined]]) {
+    assert.equal(learnedLessons(lessons, ...args), lessons, JSON.stringify(args));
+  }
 });

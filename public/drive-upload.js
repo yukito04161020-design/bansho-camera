@@ -1,4 +1,4 @@
-import { sessionFolderName } from "./folder-logic.js";
+import { sessionFolderName, FolderNameError } from "./folder-logic.js";
 import { DriveFolderError, driveErrorCode } from "./drive-folders.js";
 import { UploadFailure } from "./upload-queue.js";
 
@@ -59,13 +59,14 @@ export function createDriveUpload({ session, folders, fetcher = globalThis.fetch
     active(signal, stage);
     return value;
   }
-  function verified(file, item, id, name, folderId) {
+  function verified(file, item, id, name, { folderId, name: folderName }) {
     if (file?.id !== id || file.name !== name || file.mimeType !== item.blob.type
       || file.size !== String(item.blob.size) || file.trashed === true
       || !Array.isArray(file.parents) || file.parents.length !== 1 || file.parents[0] !== folderId) {
       throw new UploadFailure("upload", { stage: "verify" });
     }
-    return { ok: true };
+    // 送信できた保存先の名前を返し、端末内の回一覧に加えられるようにする。
+    return { ok: true, folderName };
   }
   return async (item, { persistDriveFileId, signal, progress } = {}) => {
     let stage = "read";
@@ -97,17 +98,30 @@ export function createDriveUpload({ session, folders, fetcher = globalThis.fetch
         active(signal, stage);
       }
       step("folder");
-      const destination = await folders.ensureSessionFolder({
-        className: item.className, capturedAt: item.capturedAt, manualSession,
-      }, { signal });
-      if (!validId(destination?.folderId) || destination.name !== item.sessionFolderName) throw new UploadFailure("upload", { stage });
+      let destination;
+      let renumbered = false;
+      try {
+        destination = await folders.ensureSessionFolder({
+          className: item.className, capturedAt: item.capturedAt, manualSession,
+        }, { signal });
+      } catch (error) {
+        if (!(error instanceof FolderNameError && error.reason === "collision")) throw error;
+        // 撮影時の回の番号が、古い回一覧のためにDriveで別の日付に使われていた場合。
+        // 日付と授業は撮影時のまま、同じ日付のフォルダがあればそこへ、なければ次の番号で保存する。
+        renumbered = true;
+        destination = await folders.ensureSessionFolder({ className: item.className, capturedAt: item.capturedAt }, { signal });
+      }
+      const dateSuffix = item.sessionFolderName.slice(item.sessionFolderName.indexOf("_"));
+      if (!validId(destination?.folderId) || (renumbered
+        ? !/^第[0-9]+回_/.test(destination.name) || !destination.name.endsWith(dateSuffix)
+        : destination.name !== item.sessionFolderName)) throw new UploadFailure("upload", { stage });
       const name = `板書_${new Date(item.capturedAt).toISOString().replace(/[:.]/g, "-")}_${item.id}.jpg`;
       const metadataUrl = `${api}/${id}?${new URLSearchParams({ fields })}`;
       step("check");
       const existing = await request(metadataUrl, {}, signal, stage, [404]);
       if (existing.status !== 404) {
         step("verify");
-        return verified(await data(existing, signal, stage), item, id, name, destination.folderId);
+        return verified(await data(existing, signal, stage), item, id, name, destination);
       }
       step("start");
       const start = await request(`${uploadApi}?${new URLSearchParams({ uploadType: "resumable", fields })}`, {
@@ -118,7 +132,7 @@ export function createDriveUpload({ session, folders, fetcher = globalThis.fetch
       if (start.status === 409) {
         step("verify");
         return verified(await data(await request(metadataUrl, {}, signal, stage), signal, stage),
-          item, id, name, destination.folderId);
+          item, id, name, destination);
       }
       // セッションURLはこの送信のメモリ内だけ。任意のホストへトークンや画像を送らない。
       let sessionUrl;
@@ -134,9 +148,11 @@ export function createDriveUpload({ session, folders, fetcher = globalThis.fetch
         method: "PUT", headers: { "Content-Type": item.blob.type }, body: item.blob,
       }, signal, stage);
       step("verify");
-      return verified(await data(sent, signal, stage), item, id, name, destination.folderId);
+      return verified(await data(sent, signal, stage), item, id, name, destination);
     } catch (error) {
       if (error instanceof UploadFailure) throw error;
+      // 授業名や回の番号の規則に合わないときは、送信の失敗ではなく保存先の問題として伝える。
+      if (error instanceof FolderNameError) throw new UploadFailure("folder", { stage: "folder" });
       if (error instanceof DriveFolderError) {
         throw new UploadFailure(folderReason(error), { stage: "folder", status: error.status, code: error.code });
       }

@@ -20,6 +20,13 @@ export function captureSettings(input = {}) {
   return { classes, lessons, selectedClass };
 }
 
+// 一覧を確認済みの授業だけに、送れたフォルダ名を加える。未確認の授業に一部の名前だけを記憶して番号を決めないため。
+export function learnedLessons(lessons, className, folderName) {
+  const index = lessons.findIndex((lesson) => lesson.className === className);
+  if (index < 0 || typeof folderName !== "string" || !folderName || lessons[index].names.includes(folderName)) return lessons;
+  return lessons.map((lesson, i) => (i === index ? { ...lesson, names: [...lesson.names, folderName] } : lesson));
+}
+
 export async function saveCapturedImage({ canvas, destination, enqueue }) {
   if (!destination?.className || !destination?.sessionFolderName) {
     throw new Error("保存前に授業を選び、回と保存先を確認してください。画像は残っています。");
